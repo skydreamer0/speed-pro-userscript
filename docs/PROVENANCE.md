@@ -21,3 +21,15 @@
 此檔未宣告 `@require`、未夾帶 npm 套件或外部圖片／字型檔；樣式中的字型名稱是系統字型候選清單。原碼使用 SponsorBlock API，但沒有附上 SponsorBlock 程式庫。呼叫服務不表示 API 資料或服務本身由本專案授權，也不表示已完成其使用條件檢查。
 
 本次僅檢查收到的檔案，無法證明沒有未標註的第三方片段。未發現明顯私鑰、API token、密碼、電子郵件、個人電話或私人端點；原 namespace 保留作者提供的 `george` 字串。這是有限範圍的人工與模式檢查，不是完整授權或安全稽核。
+
+## 1.2.0 Bilibili candidate
+
+原創實作，僅參考架構／相容性資訊，未搬入第三方程式片段：
+
+- [Bilibili-Evolved player-agent](https://github.com/the1812/Bilibili-Evolved/tree/master/src/components/video/player-agent)：不同播放器分 adapter。
+- [observer.ts](https://github.com/the1812/Bilibili-Evolved/blob/master/src/core/observer.ts)：路由與媒體識別是不同生命週期。
+- [Bilibili-Evolved LICENCE.md](https://github.com/the1812/Bilibili-Evolved/blob/master/LICENCE.md)：MIT 敘述另帶再散布／支援渠道條件，沒有概括宣稱純 MIT。
+- [h5player task configuration](https://github.com/xxxily/h5player/blob/master/src/h5player/h5PlayerTccInit.js)：站點與 live 分離、原生按鈕與彈幕焦點相容性思路；[原倉庫](https://github.com/xxxily/h5player) 標 GPL-3.0，沒有複製程式進 MIT 專案。
+- [Bilibili-Evolved #5654](https://github.com/the1812/Bilibili-Evolved/discussions/5654)：原生長按方向鍵倍速的衝突風險，因此不劫持 Bilibili 方向鍵。
+
+來源於 2026-10-31 查閱，不能替代真站版本驗收。詳見 SPEC.md。

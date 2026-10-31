@@ -2,9 +2,12 @@
 // @name         Speed Pro - YouTube / Facebook / Instagram / Threads
 // @name:zh-TW   Speed Pro｜YouTube、FB Reels、IG 倍速工具
 // @namespace    george.youtube.speedpro
-// @version      1.1.0
+// @version      1.2.0
+// @updateURL    https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
+// @downloadURL  https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @license      MIT
-// @description  跨平台影片倍速：FB/IG/Threads 浮動控制、YouTube 控制列、快捷鍵、SponsorBlock (YouTube)、PiP
+// @description  Bilibili / 跨平台影片倍速：FB/IG/Threads 浮動控制、YouTube 控制列、快捷鍵、SponsorBlock (YouTube)、PiP
+// @match        https://www.bilibili.com/video/*
 // @match        https://www.youtube.com/*
 // @match https://www.instagram.com/*
 // @match        https://www.facebook.com/*
@@ -23,6 +26,8 @@
 
     const APP = 'yt-speed-pro';
     const isYouTube = /(^|\.)youtube\.com$/.test(location.hostname);
+    const isBilibili = location.hostname === 'www.bilibili.com';
+    const inScope = () => !isBilibili || /^\/video\/[^/]+/.test(location.pathname);
     const STORAGE_KEY = `${APP}:settings`;
     const CHANNEL_KEY = `${APP}:channels`;
 
@@ -51,7 +56,6 @@
     let holdActive = false;
     let locked = false;
     let turboActive = false;
-    let baseRate = 1.0;
 
     let sponsorSegments = [];
     let sponsorFetchToken = 0;
@@ -62,7 +66,54 @@
 
     let controlButton = null;
     let floatControls = null;
-    const boundVideos = new WeakSet();
+    const videoStates = new WeakMap();
+    let unbindVideo = () => {};
+    let holdVideo = null;
+    let rateTimer = null;
+    let navigationTimer = null;
+    let suspended = false;
+    function stateFor(video) {
+        if (!videoStates.has(video)) videoStates.set(video, {
+            baseline: video.playbackRate, source: video.currentSrc || video.src || '',
+            retries: 0, blocked: false
+        });
+        return videoStates.get(video);
+    }
+    function restoreVideo(video) {
+        if (!video) return;
+        try { video.playbackRate = stateFor(video).baseline; } catch { /* best effort */ }
+    }
+    function releaseTemporaryHold() {
+        if (locked || !holdActive) return;
+        holdActive = false;
+        turboActive = false;
+        const owned = holdVideo;
+        holdVideo = null;
+        restoreVideo(owned);
+        updateControlUI();
+    }
+    function enforceRate() {
+        if (rateTimer !== null || suspended || !inScope()) return;
+        const video = currentVideo;
+        if (!video || !(locked || holdActive)) return;
+        const state = stateFor(video);
+        if (state.blocked || Math.abs(video.playbackRate - effectiveSpeed()) < 0.01) return;
+        rateTimer = setTimeout(() => {
+            rateTimer = null;
+            if (video !== currentVideo || !inScope() || !(locked || holdActive) || state.blocked) return;
+            if (Math.abs(video.playbackRate - effectiveSpeed()) < 0.01) return;
+            if (state.retries >= 3) {
+                state.blocked = true;
+                showToast('播放器持續重設倍速，已停止重試；請重新選擇倍率', { force: true });
+            } else {
+                state.retries++;
+                try { video.playbackRate = effectiveSpeed(); } catch { state.blocked = true; }
+                enforceRate();
+            }
+            updateControlUI();
+            renderPanelValues();
+        }, 100);
+    }
     let panel = null;
     let toastRoot = null;
     let panelOpen = false;
@@ -77,11 +128,11 @@
     }
 
     function saveSettings() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* storage unavailable */ }
     }
 
     function saveChannelSpeeds() {
-        localStorage.setItem(CHANNEL_KEY, JSON.stringify(channelSpeeds));
+        try { localStorage.setItem(CHANNEL_KEY, JSON.stringify(channelSpeeds)); } catch { /* storage unavailable */ }
     }
 
     function clamp(value, min, max) {
@@ -93,12 +144,16 @@
     }
 
     function getVideo() {
-        // Facebook/Instagram 的 feed 可以同時有多個 video；不能拿第一個。
+        if (suspended || !inScope()) return null;
+        // Site-specific discovery stays separate from shared media control.
         return (isYouTube && document.querySelector('video.html5-main-video')) || getActiveVideo();
     }
 
     function getActiveVideo() {
-        const videos = [...document.querySelectorAll('video')];
+        if (!inScope()) return null;
+        const selector = isBilibili
+            ? '.bpx-player-video-wrap video, .bilibili-player-video video' : 'video';
+        const videos = [...document.querySelectorAll(selector)];
         if (!videos.length) return null;
 
         const vw = window.innerWidth;
@@ -129,6 +184,7 @@
 
     function getVideoId() {
         try {
+            if (isBilibili) return `${location.pathname}?p=${new URL(location.href).searchParams.get('p') || '1'}`;
             return isYouTube
                 ? new URL(location.href).searchParams.get('v')
                 : (location.pathname.match(/\/(?:reel|reels)\/(\d+)/)?.[1] || null);
@@ -152,11 +208,16 @@
     }
 
     function isTypingTarget(target) {
-        return Boolean(target?.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"], [role="searchbox"], [role="combobox"]') || target?.isContentEditable);
+        return Boolean(target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="searchbox"], [role="combobox"]') || target?.isContentEditable);
     }
 
     function isInteractiveTarget(target) {
         return isTypingTarget(target) || Boolean(target?.closest?.('button, a, [role="button"], [role="link"], [role="menuitem"], [role="option"]'));
+    }
+
+    function ignoreInput(event) {
+        return event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey ||
+            (event.composedPath?.() || [event.target]).some(isInteractiveTarget);
     }
 
     function effectiveSpeed() {
@@ -164,17 +225,25 @@
         return settings.speed;
     }
 
-    function setVideoRate(rate, { persist = false, toast = false } = {}) {
+    function setVideoRate(rate, { persist = false, toast = false, explicit = true } = {}) {
         const video = getVideo();
         if (!video) return;
 
+        if (video !== currentVideo) bindVideo(video);
+        const state = stateFor(video);
+        if (explicit) { state.retries = 0; state.blocked = false; }
+        if (state.blocked) return;
         const next = clamp(roundRate(rate), 0.25, 16);
+        if (!Number.isFinite(next)) return;
         try {
             video.playbackRate = next;
         } catch {
+            state.blocked = true;
             showToast('此播放器目前不支援這個倍速', { force: true });
             return;
         }
+
+        enforceRate();
 
         if (persist) {
             settings.speed = next;
@@ -197,8 +266,10 @@
         const video = getVideo();
         if (!video || locked) return;
 
+        if (video !== currentVideo) bindVideo(video);
         if (!holdActive) {
-            baseRate = video.playbackRate;
+            stateFor(video).baseline = video.playbackRate;
+            holdVideo = video;
         }
 
         holdActive = true;
@@ -208,15 +279,7 @@
     }
 
     function stopHold() {
-        if (locked) return;
-
-        const video = getVideo();
-        if (!video) return;
-
-        holdActive = false;
-        turboActive = false;
-        video.playbackRate = baseRate;
-        updateControlUI();
+        releaseTemporaryHold();
     }
 
     function toggleLock() {
@@ -226,8 +289,9 @@
             return;
         }
 
+        if (video !== currentVideo) bindVideo(video);
         if (!locked) {
-            if (!holdActive) baseRate = video.playbackRate;
+            if (!holdActive) stateFor(video).baseline = video.playbackRate;
             locked = true;
             holdActive = true;
             turboActive = false;
@@ -237,7 +301,8 @@
             locked = false;
             holdActive = false;
             turboActive = false;
-            video.playbackRate = baseRate;
+            holdVideo = null;
+            restoreVideo(video);
             showToast('已恢復原速');
         }
         updateControlUI();
@@ -251,8 +316,9 @@
             showToast('沒有可控制的影片', { force: true });
             return;
         }
+        if (video !== currentVideo) bindVideo(video);
         if (!locked && !holdActive) {
-            baseRate = video.playbackRate;
+            stateFor(video).baseline = video.playbackRate;
             locked = true;
             holdActive = true;
         }
@@ -304,7 +370,7 @@
             saveSettings();
         }
 
-        if (locked || holdActive) setVideoRate(effectiveSpeed());
+        if (locked || holdActive) enforceRate();
         updateControlUI();
         renderPanelValues();
     }
@@ -727,13 +793,11 @@
     function updateControlUI() {
         if (!controlButton) return;
 
-        const shownRate = locked || holdActive
-            ? effectiveSpeed()
-            : settings.speed;
+        const shownRate = getVideo()?.playbackRate ?? settings.speed;
 
         controlButton.textContent = `${shownRate.toFixed(2).replace(/\.00$/, '').replace(/0$/, '')}×`;
         controlButton.dataset.locked = String(locked);
-        controlButton.title = locked
+        controlButton.title = currentVideo && stateFor(currentVideo).blocked ? '倍速衝突：已停止重試' : locked
             ? `已鎖定 ${shownRate}×`
             : `加速倍率 ${settings.speed}×`;
     }
@@ -839,7 +903,7 @@
                 <div class="${APP}-section-title">快捷鍵</div>
                 <div class="${APP}-sub" style="line-height:1.8">
                     <b>\`</b> 按住加速　<b>Shift+\`</b> 5×超速<br>
-                    <b>Tab</b> 鎖定　<b>Alt+滾輪</b> ±0.25×<br>
+                    ${isBilibili ? '點擊倍率按鈕鎖定（Tab／Enter／方向鍵保留原生）' : '<b>Tab</b> 鎖定'}　<b>Alt+滾輪</b> ±0.25×<br>
                     <b>Alt+1～5</b> 快速設 1×～5×
                 </div>
             </div>
@@ -943,7 +1007,7 @@
         panel.querySelector('[data-action="screenshot"]').addEventListener('click', takeScreenshot);
         panel.querySelector('[data-action="pip"]').addEventListener('click', togglePiP);
 
-        panel.querySelector('[data-action="reset-channel"]').addEventListener('click', () => {
+        panel.querySelector('[data-action="reset-channel"]')?.addEventListener('click', () => {
             if (currentChannelKey) {
                 delete channelSpeeds[currentChannelKey];
                 saveChannelSpeeds();
@@ -952,10 +1016,23 @@
         });
 
         panel.querySelector('[data-action="reset-all"]').addEventListener('click', () => {
+            locked = false;
+            releaseTemporaryHold();
+            restoreVideo(currentVideo);
             settings = structuredClone(DEFAULTS);
             channelSpeeds = {};
             saveSettings();
             saveChannelSpeeds();
+            const numbers = panel.querySelectorAll('input[type="number"]');
+            numbers[0].value = settings.speed;
+            numbers[1].value = settings.turboSpeed;
+            const keys = { '每頻道記憶': 'rememberChannel', 'SponsorBlock': 'sponsorBlock',
+                '廣告可跳過時自動略過': 'autoSkipAds', '廣告期間自動靜音': 'muteAds', '提示訊息': 'showToasts' };
+            panel.querySelectorAll(`.${APP}-row`).forEach(row => {
+                const key = keys[row.querySelector(`.${APP}-label-main`)?.textContent];
+                const input = row.querySelector('input[type="checkbox"]');
+                if (key && input) input.checked = settings[key];
+            });
             renderPanelValues();
             updateControlUI();
             showToast('設定已重設', { force: true });
@@ -978,12 +1055,12 @@
         const stateEl = panel.querySelector('[data-role="state"]');
         const lockEl = panel.querySelector('[data-role="lock"]');
 
-        const shown = locked || holdActive ? effectiveSpeed() : settings.speed;
+        const shown = getVideo()?.playbackRate ?? settings.speed;
 
         if (rateEl) rateEl.textContent = `${shown}×`;
 
         if (stateEl) {
-            stateEl.textContent = locked
+            stateEl.textContent = currentVideo && stateFor(currentVideo).blocked ? '倍速衝突，已退讓' : locked
                 ? '已鎖定'
                 : holdActive
                     ? (turboActive ? '超高速中' : '暫時加速中')
@@ -1251,40 +1328,60 @@
     }
 
     function bindVideo(video) {
-        if (!video || video === currentVideo) return;
+        if (video === currentVideo) return;
+        releaseTemporaryHold();
+        const previous = currentVideo;
+        unbindVideo();
+        currentVideo = null;
+        // Restore the old controlled player before leaving it; previews are never touched.
+        if (locked) restoreVideo(previous);
+        clearTimeout(rateTimer);
+        rateTimer = null;
         currentVideo = video;
-        baseRate = video.playbackRate;
-
-        if (!boundVideos.has(video)) {
-            boundVideos.add(video);
-            video.addEventListener('timeupdate', () => {
-                if (video === currentVideo && isYouTube) checkSponsorSkip();
-            }, { passive: true });
-
-            video.addEventListener('ratechange', () => {
-                if (video !== currentVideo) return;
-                if (locked || holdActive) {
-                    const desired = effectiveSpeed();
-                    if (Math.abs(video.playbackRate - desired) > 0.01) {
-                        try { video.playbackRate = desired; } catch { /* 網站或瀏覽器禁止 */ }
-                    }
-                }
-                updateControlUI();
-                renderPanelValues();
-            });
-        }
+        if (!video) return;
+        const state = stateFor(video);
+        state.baseline = video.playbackRate;
+        const onRate = () => {
+            enforceRate();
+            updateControlUI();
+            renderPanelValues();
+        };
+        const onMedia = event => {
+            if (video !== currentVideo) return;
+            releaseTemporaryHold();
+            clearTimeout(rateTimer);
+            rateTimer = null;
+            const source = video.currentSrc || video.src || '';
+            if (source && source !== state.source) {
+                state.source = source;
+                if (!locked || Math.abs(video.playbackRate - effectiveSpeed()) > 0.01) state.baseline = video.playbackRate;
+                // Media events never replenish the budget; only explicit user commands do.
+            }
+            if (event.type === 'loadedmetadata') enforceRate();
+        };
+        const onTime = () => { if (isYouTube) checkSponsorSkip(); };
+        video.addEventListener('timeupdate', onTime);
+        video.addEventListener('ratechange', onRate);
+        ['emptied', 'loadstart', 'loadedmetadata'].forEach(type => video.addEventListener(type, onMedia));
+        unbindVideo = () => {
+            video.removeEventListener('timeupdate', onTime);
+            video.removeEventListener('ratechange', onRate);
+            ['emptied', 'loadstart', 'loadedmetadata'].forEach(type => video.removeEventListener(type, onMedia));
+        };
         restoreRememberedSpeed();
-        // 換到下一支 Reel 時，舊的 lock 必須自動套用到新 <video>。
-        if (locked || holdActive) setVideoRate(effectiveSpeed());
+        enforceRate();
     }
 
     function onNavigation() {
+        releaseTemporaryHold();
         currentVideoId = getVideoId();
         currentChannelKey = null;
         sponsorSegments = [];
         lastSponsorSkip = null;
-
-        setTimeout(() => {
+        clearTimeout(navigationTimer);
+        navigationTimer = setTimeout(() => {
+            navigationTimer = null;
+            if (suspended) return;
             bindVideo(getVideo());
             ensureControlButton();
             restoreRememberedSpeed();
@@ -1293,7 +1390,8 @@
     }
 
     document.addEventListener('keydown', event => {
-        if (isTypingTarget(event.target)) return;
+        if (ignoreInput(event) || !getVideo()) return;
+        if (isBilibili && ['Tab', 'Enter'].includes(event.code)) return;
 
         if (event.altKey && /^Digit[1-5]$/.test(event.code)) {
             event.preventDefault();
@@ -1393,14 +1491,14 @@
     }, true);
 
     document.addEventListener('keyup', event => {
-        if (event.code === 'Backquote' && !locked) {
+        if (event.code === 'Backquote' && holdActive && !locked) {
             event.preventDefault();
             stopHold();
         }
     }, true);
 
     document.addEventListener('wheel', event => {
-        if (!event.altKey || isTypingTarget(event.target)) return;
+        if (!event.altKey || ignoreInput(event) || !getVideo()) return;
 
         event.preventDefault();
         adjustSpeed(event.deltaY < 0 ? settings.step : -settings.step);
@@ -1410,7 +1508,8 @@
 
     function refreshActiveVideo() {
         const video = getVideo();
-        if (video && video !== currentVideo) bindVideo(video);
+        if (video !== currentVideo) bindVideo(video);
+        if (!inScope()) closePanel();
         if (floatControls && !isYouTube) floatControls.style.display = video ? 'flex' : 'none';
         if (!controlButton || !document.body?.contains(controlButton)) {
             controlButton = null;
@@ -1421,11 +1520,11 @@
     // Facebook DOM 更新非常頻繁；把 MutationObserver 計算限制在每個畫面 1 次。
     let refreshScheduled = false;
     function scheduleRefresh() {
-        if (refreshScheduled) return;
+        if (refreshScheduled || suspended) return;
         refreshScheduled = true;
         requestAnimationFrame(() => {
             refreshScheduled = false;
-            refreshActiveVideo();
+            if (!suspended) refreshActiveVideo();
         });
     }
     const observer = new MutationObserver(scheduleRefresh);
@@ -1436,21 +1535,37 @@
 
     // SPA 跳片、Facebook 重設倍速，透過低頻 watchdog 補強。
     let lastHref = location.href;
-    setInterval(() => {
+    function tick() {
+        if (suspended) return;
         if (location.href !== lastHref) {
             lastHref = location.href;
             onNavigation();
         }
         refreshActiveVideo();
-        const active = getVideo();
-        if (active && (locked || holdActive)) {
-            const desired = effectiveSpeed();
-            if (Math.abs(active.playbackRate - desired) > 0.01) {
-                try { active.playbackRate = desired; } catch { /* 網站或瀏覽器禁止 */ }
-            }
-        }
+        enforceRate();
         if (isYouTube) handleAdAssist();
-    }, 800);
+    }
+    let watchdog = setInterval(tick, 800);
+
+    window.addEventListener('blur', releaseTemporaryHold);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) releaseTemporaryHold(); });
+    window.addEventListener('pagehide', () => {
+        releaseTemporaryHold();
+        bindVideo(null);
+        suspended = true;
+        observer.disconnect();
+        clearInterval(watchdog);
+        clearTimeout(navigationTimer);
+        clearTimeout(rateTimer);
+        rateTimer = null;
+    });
+    window.addEventListener('pageshow', () => {
+        if (!suspended) return;
+        suspended = false;
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+        watchdog = setInterval(tick, 800);
+        refreshActiveVideo();
+    });
 
     window.addEventListener('resize', () => {
         if (panelOpen) positionPanel();
