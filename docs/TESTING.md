@@ -1,28 +1,27 @@
-# 測試與驗證
+# 測試 — 1.2.0 candidate
 
-## 可重現的靜態檢查
+## 可重跑
+
+`npm test`（Node >=18，無相依套件）執行語法、metadata 精確 allowlist/version/update URL，以及 9 組 production-function VM fixtures。VM 使用實際 userscript 函式，僅在測試環境注入 private seam、stub UI；不是第二份演算法，亦不是完整 DOM 測試。
+
+涵蓋：主片排除預覽、路徑守門、每片 hold/lock 基準與換片、listener 去重／卸載、同步惡意 ratechange reset 有限寫入、媒體事件不得補重試預算、四站速度回歸、非 YT SponsorBlock 0 requests、輸入/IME/composedPath guard。
+
+## 真 DOM fixture（需 Playwright 與 Chromium）
 
 ```sh
-npm test
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+CHROMIUM_PATH=/absolute/path/to/chromium npm run test:browser
 ```
 
-無相依套件，不需要 `npm install`。檢查包括：Node 語法解析、Userscript metadata 邊界、版本與 package 一致、精確網址／權限／連線白名單、無 `@require`、LF 換行及必要文件。這些檢查不評估 DOM、播放結果或網路行為。
+或在已有 Playwright 模組與其 Chromium 的環境直接 `npm run test:browser`。本儲存庫不捆綁瀏覽器、沒有 runtime 套件依賴。測試所有 URL 都 route 到自製 HTML，沒有真站流量／帳戶／擴充安裝。
 
-2026-10-31：在 Node.js v24.22.1 執行通過；只對此執行版本有實際證據，Node.js 18 以上是工具語法要求，並非已逐版測試。
+包含五站完整腳本啟動、面板開關／重設／重開、按鍵避讓、hold blur／焦點轉移 release、替換 video、media reload、分 P 與退出 scope、network spy／pageerror。
 
-## 待執行的手動驗收
+## 作者實際結果（2026-10-31）
 
-以下全部**未執行**。使用隔離瀏覽器設定檔與非敏感測試頁；不要為測試而提供帳號密碼、Cookie 或工作階段。
+- Node v24.22.1 `npm test`：PASS，9 fixture groups，語法／metadata PASS。
+- Chromium 155 fixture：**BLOCKED BEFORE TEST**。一般 sandbox 啟動發生 `socket() failed: Operation not permitted`；一次工具升權執行在 wrapper 發生 `bwrap: Can't create file at /home/agent/.codex/sessions: Read-only file system`。未讀取該路徑、未繞過限制，未把 fixture 當成通過。
+- 真 Bilibili、多 P／合集實片、Tampermonkey、Firefox／Safari、原生全螢幕/PiP/截圖：**NOT RUN**。
+- CI 的 `npm test` 是 Node fixture，不代表任何真站或瀏覽器驗收。
 
-- 記錄瀏覽器、OS、Userscript 管理器與各自版本。
-- 各匹配網域：沒有影片、單片、多片、Reels、SPA 前進／後退、全螢幕與切換頁面。
-- 倍速：按住／放開、Shift 超速、Tab 鎖定／解除、倍率上下限、換片後鎖定、失去焦點。
-- 輸入區與鍵盤操作：搜尋、留言、可編輯元件、按鈕、連結、焦點導覽及系統快捷鍵衝突。
-- 設定面板：首次與第二次開啟、所有切換項目、重設、關閉、窄螢幕、儲存拒絕。
-- SponsorBlock：以可控 mock 回應測試成功、404、逾時、非 JSON、異常區段、停用及舊請求晚到；確認預設啟用的隱私揭露。
-- 廣告輔助：有／無略過按鈕、原本靜音、廣告途中換片與結束後恢復。
-- PiP／全螢幕：API 缺失、權限拒絕、進入與退出；截圖：成功、無影片尺寸與跨來源拒絕。
-
-## 驗收邊界
-
-GitHub Actions 工作流程僅重跑同一組靜態檢查，綠燈不代表上述清單完成，也不是安全認證。已知問題需另建修復與回歸驗證，不能因語法通過而視為已修好。
+獨立評審需對精確最終 head 另記結果；發布 Draft PR 不表示 ready to merge。

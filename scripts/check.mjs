@@ -18,8 +18,9 @@ assert.deepEqual(values('grant'), ['GM_xmlhttpRequest']);
 assert.deepEqual(values('connect'), ['sponsor.ajay.app']);
 assert.deepEqual(values('run-at'), ['document-idle']);
 assert.deepEqual(values('require'), []);
+for (const key of ['updateURL', 'downloadURL']) assert.deepEqual(values(key), ['https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js']);
 assert.deepEqual(values('match').sort(), [
-  'https://www.youtube.com/*', 'https://www.instagram.com/*',
+  'https://www.bilibili.com/video/*', 'https://www.youtube.com/*', 'https://www.instagram.com/*',
   'https://www.facebook.com/*', 'https://facebook.com/*',
   'https://m.facebook.com/*', 'https://web.facebook.com/*',
   'https://www.threads.com/*', 'https://www.threads.net/*'
