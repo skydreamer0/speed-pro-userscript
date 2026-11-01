@@ -16,13 +16,13 @@ function fixture(host = 'www.bilibili.com', path = '/video/BVfixture/') {
   vm.runInContext(source.slice(0, source.indexOf("    document.addEventListener('keydown'")) + `
     showToast = () => {}; updateControlUI = () => {}; renderPanelValues = () => {};
     globalThis.api = { getVideo, bindVideo, startHold, stopHold, toggleLock, setPreset, enforceRate,
-      ignoreInput, fetchSponsorSegments, releaseTemporaryHold, stateFor, coordinator: MediaCoordinator, resume: ResumeManager, biliIdentity: getBilibiliSponsorIdentity, normalizeSponsorBucket,
+      ignoreInput, fetchSponsorSegments, releaseTemporaryHold, stateFor, coordinator: MediaCoordinator, resume: ResumeManager, biliIdentity: getBilibiliSponsorIdentity, normalizeSponsorBucket, adAssist: handleAdAssist, adMuteRestore: restoreAdMute, cosmeticAds: applyCosmeticAdFiltering,
       media: () => currentVideo, flags: () => ({locked, holdActive}),
       navigation: () => { currentVideoId = getVideoId(); }, defaults: () => settings };
   })();`, context);
   const video = (rate = 1, main = true) => {
     const listeners = new Map(); let actual = rate; let writes = 0;
-    const v = { main, paused: false, ended: false, seeking: false, readyState: 4, currentTime: 0, duration: 120, src: 'one.mp4', currentSrc: 'one.mp4',
+    const v = { main, paused: false, ended: false, muted: false, seeking: false, readyState: 4, currentTime: 0, duration: 120, src: 'one.mp4', currentSrc: 'one.mp4',
       getBoundingClientRect: () => ({ left: 0, top: 0, right: 600, bottom: 400, width: 600, height: 400 }),
       addEventListener: (type, fn) => { const set = listeners.get(type) || new Set(); set.add(fn); listeners.set(type, set); },
       removeEventListener: (type, fn) => listeners.get(type)?.delete(fn),
@@ -33,7 +33,7 @@ function fixture(host = 'www.bilibili.com', path = '/video/BVfixture/') {
     videos.push(v); return v;
   };
   const drain = () => { let i = 0; while (jobs.length) { assert(++i < 50, 'finite timer work'); jobs.shift()(); } };
-  return { ...context.api, video, videos, location, requests, store, win: context.window, drain };
+  return { ...context.api, video, videos, location, requests, store, win: context.window, doc: context.document, drain };
 }
 let checks = 0;
 const test = (name, fn) => { fn(); checks++; console.log(`PASS ${name}`); };
@@ -94,6 +94,28 @@ test('same-node source replacement cannot adopt our own locked rate as baseline'
  const f=fixture(); const a=f.video(1.25); f.bindVideo(a); f.setPreset(3);
  a.src=a.currentSrc='two.mp4'; a.emit('loadstart'); a.emit('loadedmetadata'); f.drain();
  f.toggleLock(); assert.equal(a.playbackRate,1.25);
+});
+test('ad assist only acts on confirmed ad and restores self-owned mute', () => {
+ const f=fixture('www.youtube.com','/watch'); const v=f.video(); f.bindVideo(v);
+ let showing=false, clicks=0;
+ const player={classList:{contains: c => c==='ad-showing' && showing}};
+ const button={disabled:false,offsetParent:{},getAttribute:()=>null,click:()=>{clicks++;}};
+ f.doc.querySelector = selector => selector==='#movie_player' ? player :
+   selector.includes('skip-button') ? button : null;
+ f.defaults().muteAds=true; f.defaults().autoSkipAds=true;
+ f.adAssist(); assert.equal(v.muted,false); assert.equal(clicks,0);
+ showing=true; f.adAssist(); assert.equal(v.muted,true); assert.equal(clicks,1);
+ showing=false; f.adAssist(); assert.equal(v.muted,false);
+});
+test('cosmetic ad CSS opt-in toggles without touching player', () => {
+ const f=fixture('www.youtube.com','/watch'); const styles=[];
+ f.doc.head={appendChild: node=>styles.push(node)};
+ f.doc.createElement=()=>({remove(){ styles.splice(styles.indexOf(this),1); }});
+ f.doc.getElementById=id=>styles.find(node=>node.id===id)||null;
+ f.cosmeticAds(); assert.equal(styles.length,0);
+ f.defaults().cosmeticAdFiltering=true; f.cosmeticAds(); assert.equal(styles.length,1);
+ assert(styles[0].textContent.includes('#masthead-ad'));
+ f.defaults().cosmeticAdFiltering=false; f.cosmeticAds(); assert.equal(styles.length,0);
 });
 test('Bilibili sponsor requires verified BV and CID for current p', () => {
  const f=fixture('www.bilibili.com','/video/BV1abcdEFGH2/');
