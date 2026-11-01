@@ -1,0 +1,4 @@
+REPRODUCED GAP G1: /zh-Hant/video is rejected by current runtime; no corresponding metadata match either.
+LIMIT G2: identity inferred from URL p + initial pages; this fixture has no current media or active-player CID, yet returns CID 202. This is not proof of active-media CID.
+REPRODUCED GAP G3: known stale videoDuration=999 accepted for current duration=120.
+Diagnostic assertions passed = gaps confirmed, NOT feature acceptance. No source edits.
