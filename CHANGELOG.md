@@ -1,15 +1,15 @@
-## Unreleased repair candidate (2026-11-01; stacked on PR #8)
+## 2.0.0 integrated repair candidate (2026-11-01; PR #10, no GitHub Release)
 
 - Accept only explicit Bilibili normal/zh-Hant BV routes with validated p values.
 - Disable Bilibili SponsorBlock until active-media CID can be verified; route CID alone never enables requests, markers or skipping.
 - Reject stale/unknown Bilibili segment durations and missing/unknown skip actions.
 - Invalidate seek ownership on empty/reloading media; bind resume and SponsorBlock results to the original route/source/generation.
 - Correct resume completion margin to 15 seconds or 1%, capped at half duration.
-- No release/version bump, install migration, repository rename or real-site acceptance is claimed.
+- Integrate the corrected cumulative #4–#8 package through #10 while preserving main documentation #3/#9. Keep version 2.0.0; no separate release, validated install migration, repository rename or real-site acceptance is claimed.
 
 # Changelog
 
-## 2.0.0 — Playback Suite candidate (stacked Draft PRs, NOT RELEASED)
+## 2.0.0 — original Playback Suite stack (historical candidate notes)
 
 - Rename candidate display name from Speed Pro to Playback Suite while retaining the existing namespace, stable raw path and localStorage settings keys.
 - Generation-scoped media seek coordinator; reject stale route/media and out-of-range feature seeks.

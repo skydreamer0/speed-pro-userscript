@@ -1,10 +1,11 @@
-# Repair candidate verification (2026-11-01)
+# Integrated repair candidate verification (2026-11-01)
 
-Base: PR #8 `e46f05cb170ebbb534341ea84cce442a7e6c16cb`. See [repair evidence and integration plan](REPAIR_20261101.md).
+Runtime base: PR #8 `e46f05cb170ebbb534341ea84cce442a7e6c16cb`, corrected by #10. The main-based integration preserves #3/#9 evidence and does not change the reviewed runtime or test scripts. See [repair evidence and integration plan](REPAIR_20261101.md).
 
 - `npm test`: PASS locally, syntax/metadata/permissions plus 28 production-function fixture groups, including asynchronous real SHA-256 and mocked HTTP positive/negative cases.
 - Chromium DOM fixture: BLOCKED BEFORE TEST. `/usr/bin/chromium` launch failed with `socket() failed: Operation not permitted`; no escalation or restriction bypass. Fixture paths were updated but the browser assertions did not run.
 - Real Bilibili, YouTube, Facebook, Instagram, Threads and Tampermonkey install/upgrade: NOT_VERIFIED. No account interaction, DRM/login bypass or extension installation.
+- Independent scope review: 28 repository groups, nine additional groups and five mutation negative controls passed against runtime SHA-256 `2de7e744cb59d0aba6e10f05728c81adb163196d214f56b6aaf3171d6199eead`. Final integration CI and merge evidence are recorded in [PR #10](https://github.com/skydreamer0/speed-pro-userscript/pull/10); code integration is not a release or a manager acceptance result.
 - Historical evidence below remains tied to its original head; it is not final-candidate acceptance.
 
 ---

@@ -1,0 +1,24 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> playback-suite-userscript@2.0.0 test
+> node --check speed-pro.user.js && node scripts/check.mjs && node scripts/runtime-test.mjs
+
+PASS: metadata, version, permission allowlist, LF, documentation and zero dependencies
+LIMIT: static checks only; no browser, platform, network or security certification
+PASS Bilibili main-only selection and unsupported SPA exit
+PASS hold restores owned rate, never transfers to replacement
+PASS lock transfers and restores each baseline; repeated bindings do not duplicate
+PASS adversarial rate reset is bounded across metadata events and watchdog
+PASS opt-in resume stores standalone and playlist checkpoints separately
+PASS resume respects explicit YouTube t, completion, and stale checkpoints
+PASS media coordinator rejects stale generation and invalid seek
+PASS media reload cancels hold and keeps independent baseline
+PASS same-node source replacement cannot adopt our own locked rate as baseline
+PASS ad assist only acts on confirmed ad and restores self-owned mute
+PASS cosmetic ad CSS opt-in toggles without touching player
+PASS Bilibili sponsor requires verified BV and CID for current p
+PASS Sponsor normalized bucket refuses wrong CID, invalid ranges and full labels
+PASS all non-YouTube adapters emit zero SponsorBlock requests
+PASS four existing sites retain video control
+PASS composed-path and IME/default-prevented/modifier guards
+16 production-function fixture groups passed; not live-site/Tampermonkey validation.

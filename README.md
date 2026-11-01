@@ -3,7 +3,7 @@
 **2.0.0 候選版 / MIT / 單檔 Userscript**  
 由 Speed Pro 擴充而成：倍速、YouTube 自動續播、YouTube SponsorBlock、可選靜態廣告隱藏、PiP 與 PNG 截圖。
 
-> **尚未發布**：本版本在堆疊 Draft PR 上。原始 main 安裝 URL 目前仍提供既有版本。Node 合成測試通過不代表真網站或 Tampermonkey 驗收通過；切勿將 Draft 當正式版安裝／更新。
+> **2.0.0 整合候選，尚未完成真站驗收**：本版包含原 #4–#8 堆疊及 #10 安全修復，以單一整合 PR 納入 main，不先合入已知有缺口的中間版本。main Raw 是跟隨原碼更新的安裝通道，不是已驗收的穩定版；沒有建立 GitHub Release。Node／CI 通過不代表真網站或 Tampermonkey 安裝、升級及重複腳本驗收通過。
 
 ## 功能與支援範圍
 
@@ -41,9 +41,9 @@ Bilibili 主影片找不到即不控制。Bilibili 番劇／直播不在範圍�
 
 ## 安裝、更新與改名
 
-正式安裝來源（**目前仍是 main 舊版**）：[speed-pro.user.js Raw](https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js)。
+候選安裝來源（**跟隨 main 原碼更新，安裝前請先確認以下限制**）：[speed-pro.user.js Raw](https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js)。
 
-計畫中的顯示名稱為 **Playback Suite**、套件名稱為 playback-suite-userscript；為了維持更新，原始 `@namespace`、原始檔名、`@downloadURL` 與 `@updateURL` **暫不改動**。既有 Speed Pro 可能因 `@name` 改變被管理器視為新腳本。正式升級前需檢查只啟用一份，必要時先停用舊副本，絕不預設可無痛自動遷移。GitHub 儲存庫名稱也**尚未更改**。
+本候選版顯示名稱為 **Playback Suite**、套件名稱為 playback-suite-userscript；為了維持更新，原始 `@namespace`、原始檔名、`@downloadURL` 與 `@updateURL` **暫不改動**。既有 Speed Pro 可能因 `@name` 改變被管理器視為新腳本。正式升級前需檢查只啟用一份，必要時先停用舊副本，絕不預設可無痛自動遷移。GitHub 儲存庫名稱也**尚未更改**。
 
 ## 隱私與權限
 
@@ -56,6 +56,6 @@ Bilibili 主影片找不到即不控制。Bilibili 番劇／直播不在範圍�
 
 ## 測試與限制
 
-`npm test`：Node >=18，沒有 npm 相依，執行語法、metadata、16 組 production-function 合成 fixture（PR #7 上已通過 GitHub Actions）。**尚未**完成真 YouTube／Bilibili／FB／IG／Threads、Tampermonkey 及完整 DOM browser 驗收；Bilibili CID 相容性、續播跨分頁競態及進度縮圖同步仍為已知缺口。沒有宣布 release 或合併任何 PR。
+`npm test`：Node >=18，沒有 npm 相依，執行語法、metadata 與 28 組 production-function 合成 fixture；`node scripts/repair-negative-test.mjs` 驗證 5 個故意破壞防護的負控會失敗。獨立評審另驗 9 組，最終 head 的 CI 記錄在 [PR #10](https://github.com/skydreamer0/speed-pro-userscript/pull/10)。**尚未**完成真 YouTube／Bilibili／FB／IG／Threads、Tampermonkey 及完整 DOM browser 驗收；Bilibili 跳段保持停用，續播跨分頁競態、同 source SPA 可用性及進度縮圖同步仍有限制。原碼合併不代表發布或真站驗收完成。
 
 [整合 SPEC](docs/PLAYBACK_SUITE_2.0_SPEC.md) · [原 Bilibili SPEC](SPEC.md) · [測試](docs/TESTING.md) · [已知限制](docs/KNOWN_ISSUES.md) · [來源與授權](docs/PROVENANCE.md) · [變更](CHANGELOG.md) · [安全](SECURITY.md) · [貢獻](CONTRIBUTING.md)
