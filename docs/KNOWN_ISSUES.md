@@ -1,8 +1,10 @@
 # Playback Suite 2.0 candidate — Known issues
 
-- **Draft only**: no release, real YouTube/Bilibili/Tampermonkey/FB/IG/Threads acceptance or independent code/security review. GitHub CI runs 16 synthetic groups, NOT full browser tests.
+- **Draft only**: no release, real YouTube/Bilibili/Tampermonkey/FB/IG/Threads acceptance or independent security audit. Focused code-review evidence is recorded in the repair PR. The repair candidate runs 28 synthetic groups locally; exact-head CI is recorded in its PR. These are NOT full browser tests.
 - YouTube resume uses site-readable **localStorage**, not GM private storage. Cross-tab writes are last-write-wins and not transactional; original Auto-Resume's live thumbnail bar sync is not implemented. Not full feature parity.
-- Bilibili sponsor skipping requires matching BV + per-page CID from window.__INITIAL_STATE__, which may be hidden in a userscript manager sandbox or changed by Bilibili. Fail closed, don't claim unconditional working support.
+- Bilibili sponsor requests/skips/markers are disabled, including when the stored opt-in is true. No active-media CID adapter has been verified. URL p and INITIAL_STATE page CID are not media evidence; this is a safety closure, not completed Bilibili SponsorBlock support.
+- Bilibili `/video/BV...` and `/zh-Hant/video/BV...` use one strict route parser. AV, arbitrary locale, malformed/duplicate p and unknown paths fail closed. Live URL redirects and Tampermonkey injection are NOT_VERIFIED.
+- YouTube route/source transitions invalidate checkpoints and sponsor responses. A same-source SPA transition without reliable new metadata stays unavailable rather than relabeling old media with a new URL.
 - New static ad CSS is opt-in and conservative. Does not seek to duration, force play or remove anti-adblock/consent dialogs; cannot guarantee an ad-free player.
 - SponsorBlock's SHA-256 prefix reduces exposed ID specificity but does not make network access anonymous; Bilibili new host permission is bsbsb.top. Data may be incomplete or incorrect.
 - Metadata @name rebrand with unchanged @namespace/raw URL might still be recognized as a new script by some managers. Verify no duplicate enabled installs before user migration. GitHub repo slug is unchanged.

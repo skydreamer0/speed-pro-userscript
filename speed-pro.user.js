@@ -6,8 +6,9 @@
 // @updateURL    https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @downloadURL  https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @license      MIT
-// @description  Speed controls, opt-in YouTube resume, YouTube/Bilibili SponsorBlock, YouTube ad assist, PiP and screenshots.
+// @description  Speed controls, opt-in YouTube resume, YouTube SponsorBlock, Bilibili speed controls, YouTube ad assist, PiP and screenshots.
 // @match        https://www.bilibili.com/video/*
+// @match        https://www.bilibili.com/zh-Hant/video/*
 // @match        https://www.youtube.com/*
 // @match https://www.instagram.com/*
 // @match        https://www.facebook.com/*
@@ -28,7 +29,36 @@
     const APP = 'yt-speed-pro';
     const isYouTube = /(^|\.)youtube\.com$/.test(location.hostname);
     const isBilibili = location.hostname === 'www.bilibili.com';
-    const inScope = () => !isBilibili || /^\/video\/[^/]+/.test(location.pathname);
+    // One narrow route parser; a route identity is NOT proof of the active media CID.
+    function parseBilibiliRoute(href = location.href) {
+        try {
+            const url = new URL(href);
+            if (url.protocol !== 'https:' || url.hostname !== 'www.bilibili.com' ||
+                url.port || url.username || url.password) return null;
+            const match = url.pathname.match(/^\/(?:zh-Hant\/)?video\/(BV[0-9A-Za-z]{10})\/?$/);
+            if (!match) return null;
+            const pages = url.searchParams.getAll('p');
+            const rawPages = url.search.slice(1).split('&').filter(part => /^p(?:=|$)/.test(part));
+            if (pages.length > 1 || (pages.length && (rawPages.length !== 1 ||
+                !/^p=[1-9][0-9]{0,3}$/.test(rawPages[0])))) return null;
+            const page = pages.length ? Number(pages[0]) : 1;
+            if (!Number.isSafeInteger(page) || page < 1 || page > 1000) return null;
+            return { bvid: match[1], page, routeKey: match[1] + ':' + page };
+        } catch { return null; }
+    }
+    const inScope = () => !isBilibili || Boolean(parseBilibiliRoute());
+    function mediaRouteKey() {
+        if (isBilibili) return parseBilibiliRoute()?.routeKey || null;
+        if (isYouTube) {
+            try {
+                const url = new URL(location.href);
+                const id = url.searchParams.get('v');
+                return url.pathname === '/watch' && /^[A-Za-z0-9_-]{11}$/.test(id || '') ? id : null;
+            } catch { return null; }
+        }
+        return location.href;
+    }
+    const mediaSource = video => video?.currentSrc || video?.src || '';
     const STORAGE_KEY = `${APP}:settings`;
     const CHANNEL_KEY = `${APP}:channels`;
 
@@ -65,6 +95,7 @@
 
     let sponsorSegments = [];
     let sponsorFullLabel = null;
+    let sponsorContext = null;
     let sponsorFetchToken = 0;
     let lastSponsorSkip = null;
 
@@ -84,14 +115,41 @@
     // All feature-owned currentTime writes must pass through this gate.
     const MediaCoordinator = {
         generation: 0,
-        invalidate() { this.generation++; },
+        ready: false,
+        source: '',
+        routeKey: null,
+        invalidate() {
+            this.generation++;
+            sponsorFetchToken++;
+            sponsorSegments = [];
+            sponsorFullLabel = null;
+            sponsorContext = null;
+            lastSponsorSkip = null;
+            clearSponsorVisuals();
+        },
+        bind(video) {
+            this.source = mediaSource(video);
+            this.routeKey = mediaRouteKey();
+            this.ready = Boolean(video && this.source && video.readyState >= 1);
+        },
+        metadata(video) {
+            const source = mediaSource(video);
+            const routeKey = mediaRouteKey();
+            // A changed URL with the old source cannot establish a new media identity.
+            this.ready = Boolean(source && video.readyState >= 1 &&
+                (source !== this.source || routeKey === this.routeKey));
+            if (this.ready) { this.source = source; this.routeKey = routeKey; }
+        },
         snapshot() {
-            return { generation: this.generation, video: currentVideo, url: location.href };
+            return { generation: this.generation, video: currentVideo, url: location.href,
+                source: mediaSource(currentVideo), routeKey: mediaRouteKey() };
         },
         isCurrent(token) {
-            return Boolean(token && !suspended && inScope() && token.video &&
+            return Boolean(token && this.ready && !suspended && inScope() && token.video &&
                 token.video === currentVideo && token.generation === this.generation &&
-                token.url === location.href);
+                token.url === location.href && token.source && token.source === this.source &&
+                token.source === mediaSource(currentVideo) && token.routeKey === this.routeKey &&
+                token.routeKey === mediaRouteKey());
         },
         seek(token, time) {
             if (!this.isCurrent(token) || !Number.isFinite(time) || time < 0) return false;
@@ -157,13 +215,15 @@
         },
         attach(video) {
             const ctx = this.context();
-            if (!settings.resumeEnabled || !video || !ctx) {
+            const token = MediaCoordinator.snapshot();
+            if (!settings.resumeEnabled || !video || !ctx || !MediaCoordinator.isCurrent(token)) {
                 this.active = null;
                 return;
             }
-            if (this.active?.video === video && this.active.ctx.key === ctx.key) return;
+            if (this.active?.video === video && this.active.ctx.key === ctx.key &&
+                MediaCoordinator.isCurrent(this.active.token)) return;
             this.active = {
-                video, ctx, restored: false, userSeeked: false, lastSavedAt: 0,
+                video, ctx, token, restored: false, userSeeked: false, lastSavedAt: 0,
                 startedAt: Date.now(), ignoreOwnSeekUntil: 0
             };
         },
@@ -193,7 +253,7 @@
         tryRestore(video) {
             const state = this.active;
             if (!settings.resumeEnabled || !state || !video || state.video !== video ||
-                state.restored || state.userSeeked || !MediaCoordinator.isCurrent(MediaCoordinator.snapshot())) return false;
+                state.restored || state.userSeeked || !MediaCoordinator.isCurrent(state.token)) return false;
             const ctx = this.context();
             if (!ctx || ctx.key !== state.ctx.key) return false;
             if (ctx.explicitTime || Date.now() - state.startedAt > 30000) {
@@ -213,7 +273,7 @@
                 return true;
             }
             const saved = this.read(ctx.key);
-            const endMargin = Math.min(15, Math.max(1, duration * 0.01));
+            const endMargin = Math.min(duration / 2, Math.max(15, duration * 0.01));
             if (!saved || saved.completed || !Number.isFinite(saved.time) || !Number.isFinite(saved.duration) ||
                 saved.time < 5 || saved.time >= duration - endMargin ||
                 Date.now() - saved.savedAt > 90 * 86400000 ||
@@ -222,7 +282,7 @@
                 return false;
             }
             state.ignoreOwnSeekUntil = Date.now() + 1500;
-            const ok = MediaCoordinator.seek(MediaCoordinator.snapshot(), saved.time);
+            const ok = MediaCoordinator.seek(state.token, saved.time);
             if (!ok) { state.ignoreOwnSeekUntil = 0; return false; }
             state.restored = true;
             showToast('已接續上次播放進度');
@@ -231,12 +291,12 @@
         save(video, force = false) {
             const state = this.active;
             if (!settings.resumeEnabled || !state || !video || state.video !== video || this.isAd()) return;
-            if (this.context()?.key !== state.ctx.key) return;
+            if (this.context()?.key !== state.ctx.key || !MediaCoordinator.isCurrent(state.token)) return;
             const now = Date.now();
             if (!force && now - state.lastSavedAt < 5000) return;
             const t = Number(video.currentTime), d = Number(video.duration);
             if (!Number.isFinite(t) || !Number.isFinite(d) || d < 10 || t < 5 || t > d + 1) return;
-            const completed = Boolean(video.ended || d - t <= Math.min(15, Math.max(1, d * 0.01)));
+            const completed = Boolean(video.ended || d - t <= Math.min(d / 2, Math.max(15, d * 0.01)));
             const entry = { time: Math.round(t * 10) / 10, duration: Math.round(d * 10) / 10,
                 completed, savedAt: now };
             if (this.write(state.ctx.key, entry)) {
@@ -1177,12 +1237,12 @@
             ),
             panelRow(
                 'Bilibili 贊助片段',
-                '僅在能確認目前分 P 的 CID 時取得並跳過片段',
+                '目前不可用：尚無經真站驗證的媒體 CID adapter；不會請求或跳過片段',
                 makeToggle(settings.bilibiliSponsorBlock, value => {
                     settings.bilibiliSponsorBlock = value;
                     saveSettings();
-                    if (value) fetchSponsorSegments();
-                    else { sponsorFetchToken++; sponsorSegments = []; sponsorFullLabel = null; clearSponsorVisuals(); }
+                    if (value) showToast('Bilibili 贊助片段目前不可用；倍速功能不受影響', { force: true });
+                    sponsorFetchToken++; sponsorSegments = []; sponsorFullLabel = null; sponsorContext = null; clearSponsorVisuals();
                 })
             ),
             panelRow(
@@ -1473,24 +1533,18 @@
     }
 
 
-    // No Bilibili segment can be used without a verified video ID and page CID.
-    // This data is not reliably accessible in all userscript sandboxes; fail closed.
+    // No verified active-media CID adapter is available yet. INITIAL_STATE pages,
+    // URL p and a player-global CID can all lead/lag the actual video during SPA.
+    // Keep all Bilibili sponsor requests, markers and seeks disabled rather than
+    // treating a route-only CID as media-confirmed. Speed controls remain available.
     function getBilibiliSponsorIdentity() {
-        if (!isBilibili || !inScope()) return null;
-        const bv = location.pathname.match(/^\/video\/(BV[0-9A-Za-z]{10})(?:\/|$)/)?.[1];
-        if (!bv) return null;
-        const p = Number(new URL(location.href).searchParams.get('p') || 1);
-        if (!Number.isSafeInteger(p) || p < 1 || p > 1000) return null;
-        const videoData = window.__INITIAL_STATE__?.videoData;
-        if (!videoData || videoData.bvid !== bv || !Array.isArray(videoData.pages)) return null;
-        const cid = Number(videoData.pages[p - 1]?.cid);
-        if (!Number.isSafeInteger(cid) || cid <= 0) return null;
-        return { platform: 'bilibili', videoId: bv, cid: String(cid), page: p };
+        return null;
     }
 
     function sponsorIdentity() {
         if (isBilibili) return settings.bilibiliSponsorBlock ? getBilibiliSponsorIdentity() : null;
-        if (!isYouTube || !settings.sponsorBlock) return null;
+        if (!isYouTube || !settings.sponsorBlock ||
+            !MediaCoordinator.isCurrent(MediaCoordinator.snapshot())) return null;
         const id = getVideoId();
         return /^[A-Za-z0-9_-]{11}$/.test(id || '') ? { platform: 'youtube', videoId: id } : null;
     }
@@ -1518,12 +1572,17 @@
             if (!Number.isFinite(start) || !Number.isFinite(end) ||
                 start < 0 || start >= end || end > duration + 2 ||
                 !allowed.has(segment.category)) continue;
-            if (identity.platform === 'bilibili' && String(segment.cid) !== identity.cid) continue;
+            if (identity.platform === 'bilibili') {
+                if (String(segment.cid) !== identity.cid) continue;
+                // API unknown duration (0), missing and malformed values cannot auto-skip.
+                if (typeof segment.videoDuration !== 'number' || !Number.isFinite(segment.videoDuration) ||
+                    segment.videoDuration <= 0 || Math.abs(segment.videoDuration - duration) > 2) continue;
+            }
             if (segment.actionType === 'full') {
                 fullLabel = segment.category;
                 continue;
             }
-            if (segment.actionType && segment.actionType !== 'skip') continue;
+            if (segment.actionType !== 'skip') continue;
             accepted.push({ start, end, category: segment.category, uuid: String(segment.UUID || '') });
         }
         accepted.sort((a, b) => a.start - b.start || a.end - b.end);
@@ -1535,7 +1594,16 @@
         document.getElementById(APP + '-sponsor-label')?.remove();
     }
 
+    function sponsorContextIsCurrent(context = sponsorContext) {
+        if (!context || !MediaCoordinator.isCurrent(context.token)) return false;
+        const identity = sponsorIdentity();
+        return Boolean(identity && identity.platform === context.identity.platform &&
+            identity.videoId === context.identity.videoId && identity.cid === context.identity.cid &&
+            Number(currentVideo?.duration) === context.duration);
+    }
+
     function renderSponsorVisuals() {
+        if (!sponsorContextIsCurrent()) { clearSponsorVisuals(); return; }
         const enabled = isBilibili ? settings.bilibiliSponsorBlock : settings.sponsorBlock;
         const video = getVideo();
         const duration = Number(video?.duration);
@@ -1596,12 +1664,15 @@
         const token = ++sponsorFetchToken;
         sponsorSegments = [];
         sponsorFullLabel = null;
+        sponsorContext = null;
         clearSponsorVisuals();
         if (!identity || !inScope()) return;
+        const context = { identity, token: MediaCoordinator.snapshot(), duration: Number(currentVideo?.duration) };
+        if (!sponsorContextIsCurrent(context)) return;
         const requestUrl = location.href;
         try {
             const prefix = await sponsorHashPrefix(identity.videoId);
-            if (!prefix || token !== sponsorFetchToken || location.href !== requestUrl) return;
+            if (!prefix || token !== sponsorFetchToken || location.href !== requestUrl || !sponsorContextIsCurrent(context)) return;
             const categories = identity.platform === 'bilibili'
                 ? ['sponsor', 'selfpromo', 'exclusive_access', 'interaction', 'outro']
                 : settings.sponsorCategories.filter(c => c !== 'music_offtopic');
@@ -1611,11 +1682,11 @@
                 '&actionTypes=' + encodeURIComponent(JSON.stringify(['skip', 'full']));
             const response = await gmGet(url);
             if (token !== sponsorFetchToken || location.href !== requestUrl ||
-                response.status < 200 || response.status >= 300) return;
+                !sponsorContextIsCurrent(context) || response.status < 200 || response.status >= 300) return;
             const parsed = JSON.parse(response.responseText);
-            const duration = Number(getVideo()?.duration);
-            const result = normalizeSponsorBucket(parsed, identity, duration);
-            if (token !== sponsorFetchToken || location.href !== requestUrl) return;
+            const result = normalizeSponsorBucket(parsed, identity, context.duration);
+            if (token !== sponsorFetchToken || location.href !== requestUrl || !sponsorContextIsCurrent(context)) return;
+            sponsorContext = context;
             sponsorSegments = result.segments;
             sponsorFullLabel = result.fullLabel;
             renderSponsorVisuals();
@@ -1644,23 +1715,30 @@
     }
 
     function checkSponsorSkip() {
-        if (!(isBilibili ? settings.bilibiliSponsorBlock : settings.sponsorBlock) || !currentVideo || sponsorSegments.length === 0) return;
+        if (!(isBilibili ? settings.bilibiliSponsorBlock : settings.sponsorBlock) || !currentVideo || sponsorSegments.length === 0 || !sponsorContextIsCurrent()) return;
 
         const t = currentVideo.currentTime;
+        // Undo exempts this entire segment for the current pass, not just two seconds.
+        // Leaving its interval (including seeking before it) starts a later replay pass.
+        if (lastSponsorSkip?.exempt && (t < lastSponsorSkip.start - 0.08 || t >= lastSponsorSkip.end)) {
+            lastSponsorSkip = null;
+        }
 
         const segment = sponsorSegments.find(seg =>
             t >= seg.start &&
             t < seg.end - 0.08 &&
-            (!lastSponsorSkip || lastSponsorSkip.uuid !== seg.uuid || Math.abs(t - lastSponsorSkip.at) > 2)
+            (!lastSponsorSkip || lastSponsorSkip.segment !== seg ||
+                (!lastSponsorSkip.exempt && Math.abs(t - lastSponsorSkip.at) > 2))
         );
 
         if (!segment) return;
 
         const from = t;
-        const token = MediaCoordinator.snapshot();
+        const token = sponsorContext.token;
         if (!MediaCoordinator.seek(token, segment.end + 0.03)) return;
 
         lastSponsorSkip = {
+            segment, exempt: false,
             uuid: segment.uuid,
             start: segment.start,
             end: segment.end,
@@ -1673,7 +1751,11 @@
             duration: 3200,
             actionText: '返回',
             onAction: () => {
-                MediaCoordinator.seek(token, Math.max(segment.start, from));
+                if (!sponsorContextIsCurrent() || sponsorContext.token !== token) return;
+                if (MediaCoordinator.seek(token, Math.max(segment.start, from))) {
+                    lastSponsorSkip = { segment, exempt: true, uuid: segment.uuid,
+                        start: segment.start, end: segment.end, at: from };
+                }
             }
         });
     }
@@ -1779,6 +1861,7 @@
         clearTimeout(rateTimer);
         rateTimer = null;
         currentVideo = video;
+        MediaCoordinator.bind(video);
         if (!video) return;
         const state = stateFor(video);
         state.baseline = video.playbackRate;
@@ -1792,16 +1875,19 @@
             releaseTemporaryHold();
             clearTimeout(rateTimer);
             rateTimer = null;
-            const source = video.currentSrc || video.src || '';
+            const source = mediaSource(video);
+            // Empty/reloading media invalidates ownership immediately, even when src is blank.
+            MediaCoordinator.invalidate();
+            if (event.type !== 'loadedmetadata') MediaCoordinator.ready = false;
+            else MediaCoordinator.metadata(video);
             if (source && source !== state.source) {
-                MediaCoordinator.invalidate();
                 state.source = source;
                 if (!locked || Math.abs(video.playbackRate - effectiveSpeed()) > 0.01) state.baseline = video.playbackRate;
                 // Media events never replenish the budget; only explicit user commands do.
             }
             if (event.type === 'loadedmetadata') {
                 enforceRate();
-                if (isYouTube) ResumeManager.tryRestore(video);
+                if (isYouTube) { ResumeManager.attach(video); ResumeManager.tryRestore(video); }
                 if ((isYouTube || isBilibili) && !sponsorSegments.length) fetchSponsorSegments();
                 renderSponsorVisuals();
             }

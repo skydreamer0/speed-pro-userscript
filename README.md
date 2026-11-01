@@ -1,7 +1,7 @@
 # Playback Suite｜跨平台影片播放助手
 
 **2.0.0 候選版 / MIT / 單檔 Userscript**  
-由 Speed Pro 擴充而成：倍速、YouTube 自動續播、SponsorBlock（YouTube / Bilibili）、可選靜態廣告隱藏、PiP 與 PNG 截圖。
+由 Speed Pro 擴充而成：倍速、YouTube 自動續播、YouTube SponsorBlock、可選靜態廣告隱藏、PiP 與 PNG 截圖。
 
 > **尚未發布**：本版本在堆疊 Draft PR 上。原始 main 安裝 URL 目前仍提供既有版本。Node 合成測試通過不代表真網站或 Tampermonkey 驗收通過；切勿將 Draft 當正式版安裝／更新。
 
@@ -10,7 +10,7 @@
 | 網站 | 倍速 / 快捷鍵 | 自動續播 | SponsorBlock | 廣告處理 |
 |---|---|---|---|---|
 | YouTube www（watch） | 既有功能 | **可選；預設關閉** | 既有功能擴充，雜湊查詢、可選標記 | 原生略過／靜音；可選靜態廣告 CSS |
-| Bilibili www /video | 實驗性 | 未支援 | **可選；預設關閉；必須確認 BV + 本分 P CID** | 未支援 |
+| Bilibili www /video、/zh-Hant/video | 實驗性 | 未支援 | **目前不可用：未驗證 active-media CID adapter，零請求／跳段／標記** | 未支援 |
 | Facebook / Instagram / Threads | 既有共用控制 | 未支援 | 未支援 | 未支援 |
 | YouTube Music／手機版／嵌入頁 | **未納入本版匹配** | 未支援 | 未支援 | 未支援 |
 
@@ -35,7 +35,7 @@ Bilibili 主影片找不到即不控制。Bilibili 番劇／直播不在範圍�
 
 **續播（關閉為預設）**：YouTube watch 頁面記錄影片時間；同一影片在一般播放與特定 playlist 中分開儲存。明確網址 `t`／`start`、手動尋找時間點與已看完影片優先；資料 90 天過期，最多保留約 2,000 筆。另有清除續播紀錄按鈕。播放清單上次影片跳轉是額外可關閉的實驗功能。
 
-**SponsorBlock**：YouTube 原有功能擴充為 SHA-256 前四碼查詢與片段標記；Bilibili 另外使用 bsbsb.top，必須能從當前頁取得匹配的 BV、CID 才會跳段（否則不處理）。全片分類只顯示標籤，不直接跳掉整片；片段可透過提示按鈕返回。資料來自社群標記，可能有錯誤，隨時可關閉。
+**SponsorBlock**：YouTube 原有功能擴充為 SHA-256 前四碼查詢與片段標記；Bilibili 跳段目前停用，即使設定開啟也不送請求、不跳段、不畫標記；URL／初始頁面 CID 不能證明實際影片身分，待真站驗證的 adapter 才能啟用。全片分類只顯示標籤，不直接跳掉整片；片段可透過提示按鈕返回。資料來自社群標記，可能有錯誤，隨時可關閉。
 
 **廣告**：只在 YouTube 明確進入 ad-showing 狀態時點擊可見的原生略過按鈕或暫時靜音。新增 CSS 預設關閉，只隱藏已辨認的靜態廣告元素；**不會快轉整段廣告到影片結尾、強制播放或任意移除彈窗**。
 
@@ -47,11 +47,12 @@ Bilibili 主影片找不到即不控制。Bilibili 番劇／直播不在範圍�
 
 ## 隱私與權限
 
-- 新版僅新增 `@connect bsbsb.top`，原有 SponsorBlock 網域為 `sponsor.ajay.app`；`GM_xmlhttpRequest` 仍是唯一宣告的 grant，沒有遠端 `@require` 或程式碼下載執行。
-- **YouTube 與 Bilibili** SponsorBlock 使用影片 ID 的 SHA-256 前四碼查詢；回傳桶內需要再符合完整影片 ID（Bilibili 另比對 CID）。外部服務仍能看見 IP 等一般連線資訊；雜湊前綴不是完全匿名。
+- 此修復只新增窄範圍 `@match https://www.bilibili.com/zh-Hant/video/*`，沒有新增 grants、connect 或 require。既有候選版保留 `@connect bsbsb.top`（目前不請求），原有 SponsorBlock 網域為 `sponsor.ajay.app`；`GM_xmlhttpRequest` 仍是唯一宣告的 grant，沒有遠端 `@require` 或程式碼下載執行。
+- **YouTube** SponsorBlock 使用影片 ID 的 SHA-256 前四碼查詢，回傳桶內須符合完整影片 ID。Bilibili 目前沒有網路請求。外部服務仍能看見 IP 等一般連線資訊；雜湊前綴不是完全匿名。
 - **續播資料存在 YouTube 網頁的 localStorage**，前綴 `yt-speed-pro:resume:v1:`，同源網頁腳本可能讀取。這不是私有／加密 GM 儲存。預設關閉；開啟前請自行衡量。
 - 舊的 `yt-speed-pro:settings` 與 `yt-speed-pro:channels` 保留，不做破壞性遷移。不同網域無跨站同步；沒有分析追蹤或外部帳號同步。
-- Bilibili 可能因使用者腳本 sandbox 無法讀到頁面的 CID，導致安全地不執行跳段；此情境須真站驗證。
+- Bilibili 的缺口已採安全停用處理，不等於 SponsorBlock 功能已完成。語系網址倍速僅合成測試通過，真站與管理器仍為 NOT_VERIFIED。
+- 同節點換片若沒有新的可識別媒體來源，YouTube 續播／SponsorBlock 會保守停止，不猜測網址與媒體已對齊。
 
 ## 測試與限制
 

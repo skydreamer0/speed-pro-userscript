@@ -1,3 +1,12 @@
+## Unreleased repair candidate (2026-11-01; stacked on PR #8)
+
+- Accept only explicit Bilibili normal/zh-Hant BV routes with validated p values.
+- Disable Bilibili SponsorBlock until active-media CID can be verified; route CID alone never enables requests, markers or skipping.
+- Reject stale/unknown Bilibili segment durations and missing/unknown skip actions.
+- Invalidate seek ownership on empty/reloading media; bind resume and SponsorBlock results to the original route/source/generation.
+- Correct resume completion margin to 15 seconds or 1%, capped at half duration.
+- No release/version bump, install migration, repository rename or real-site acceptance is claimed.
+
 # Changelog
 
 ## 2.0.0 — Playback Suite candidate (stacked Draft PRs, NOT RELEASED)
