@@ -1,3 +1,17 @@
+# Playback Suite 2.0 candidate — Known issues
+
+- **Draft only**: no release, real YouTube/Bilibili/Tampermonkey/FB/IG/Threads acceptance or independent code/security review. GitHub CI runs 16 synthetic groups, NOT full browser tests.
+- YouTube resume uses site-readable **localStorage**, not GM private storage. Cross-tab writes are last-write-wins and not transactional; original Auto-Resume's live thumbnail bar sync is not implemented. Not full feature parity.
+- Bilibili sponsor skipping requires matching BV + per-page CID from window.__INITIAL_STATE__, which may be hidden in a userscript manager sandbox or changed by Bilibili. Fail closed, don't claim unconditional working support.
+- New static ad CSS is opt-in and conservative. Does not seek to duration, force play or remove anti-adblock/consent dialogs; cannot guarantee an ad-free player.
+- SponsorBlock's SHA-256 prefix reduces exposed ID specificity but does not make network access anonymous; Bilibili new host permission is bsbsb.top. Data may be incomplete or incorrect.
+- Metadata @name rebrand with unchanged @namespace/raw URL might still be recognized as a new script by some managers. Verify no duplicate enabled installs before user migration. GitHub repo slug is unchanged.
+- New settings flags default OFF; users who only update a Draft branch do not gain production availability. Full-site match extension to YouTube Music/mobile/embed remains out of scope.
+
+Original 1.2.0 candidate notes (historical) follow.
+
+---
+
 # 已知限制 — 1.2.0 候選
 
 - 尚未做真實 Bilibili／既有四站＋Tampermonkey 驗收。合成 fixture 不能證明真站 DOM、影片傳輸或 manager sandbox 相容。
