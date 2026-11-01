@@ -7,6 +7,7 @@
 // @downloadURL  https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @license      MIT
 // @description  Speed controls, opt-in YouTube resume, YouTube SponsorBlock, Bilibili speed controls, YouTube ad assist, PiP and screenshots.
+// @description:zh-TW  倍速控制、可選 YouTube 續播、YouTube SponsorBlock、Bilibili 倍速控制、YouTube 廣告輔助、子母畫面與截圖。
 // @match        https://www.bilibili.com/video/*
 // @match        https://www.bilibili.com/zh-Hant/video/*
 // @match        https://www.youtube.com/*
