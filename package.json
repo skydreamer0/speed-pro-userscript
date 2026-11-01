@@ -1,8 +1,8 @@
 {
-  "name": "speed-pro-userscript",
-  "version": "1.2.0",
+  "name": "playback-suite-userscript",
+  "version": "2.0.0",
   "private": true,
-  "description": "Cross-platform video speed userscript with YouTube SponsorBlock integration",
+  "description": "Cross-platform playback companion: speed, optional YouTube resume, sponsor skips and conservative ad assist",
   "license": "MIT",
   "engines": {
     "node": ">=18"
