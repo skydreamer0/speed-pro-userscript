@@ -1,12 +1,12 @@
 // ==UserScript==
-// @name         Speed Pro - YouTube / Facebook / Instagram / Threads
-// @name:zh-TW   Speed Pro｜YouTube、FB Reels、IG 倍速工具
+// @name         Playback Suite - Cross-platform Video Companion
+// @name:zh-TW   Playback Suite｜跨站影片播放助手
 // @namespace    george.youtube.speedpro
-// @version      1.2.0
+// @version      2.0.0
 // @updateURL    https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @downloadURL  https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @license      MIT
-// @description  Bilibili / 跨平台影片倍速：FB/IG/Threads 浮動控制、YouTube 控制列、快捷鍵、SponsorBlock (YouTube)、PiP
+// @description  Speed controls, opt-in YouTube resume, YouTube/Bilibili SponsorBlock, YouTube ad assist, PiP and screenshots.
 // @match        https://www.bilibili.com/video/*
 // @match        https://www.youtube.com/*
 // @match https://www.instagram.com/*
@@ -943,7 +943,7 @@
             controlButton = document.createElement('button');
             controlButton.id = `${APP}-button`;
             controlButton.type = 'button';
-            controlButton.title = 'Speed Pro 設定';
+            controlButton.title = 'Playback Suite 設定';
             controlButton.addEventListener('click', event => {
                 event.stopPropagation();
                 togglePanel();
@@ -981,8 +981,8 @@
         settingButton.type = 'button';
         settingButton.id = `${APP}-settings-button`;
         settingButton.textContent = '⚙';
-        settingButton.title = '開啟 Speed Pro 設定';
-        settingButton.setAttribute('aria-label', '開啟 Speed Pro 設定');
+        settingButton.title = '開啟 Playback Suite 設定';
+        settingButton.setAttribute('aria-label', '開啟 Playback Suite 設定');
         settingButton.addEventListener('click', event => {
             event.stopPropagation();
             togglePanel();
@@ -1068,8 +1068,8 @@
         panel.innerHTML = `
             <div class="${APP}-header">
                 <div>
-                    <div class="${APP}-title">Speed Pro</div>
-                    <div class="${APP}-sub">速度、跳段與播放工具</div>
+                    <div class="${APP}-title">Playback Suite</div>
+                    <div class="${APP}-sub">倍速、續播、跳段與播放工具</div>
                 </div>
                 <button class="${APP}-close" type="button">×</button>
             </div>
