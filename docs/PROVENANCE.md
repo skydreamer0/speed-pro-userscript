@@ -33,3 +33,14 @@
 - [Bilibili-Evolved #5654](https://github.com/the1812/Bilibili-Evolved/discussions/5654)：原生長按方向鍵倍速的衝突風險，因此不劫持 Bilibili 方向鍵。
 
 來源於 2026-10-31 查閱，不能替代真站版本驗收。詳見 SPEC.md。
+
+## Playback Suite 2.0 candidate integration (2026-11-01)
+
+User-provided references, checked as **design inputs** rather than vendored runtime code:
+
+- ElectroKnight22 / YouTube Auto-Resume v2.8.1, MIT: https://greasyfork.org/scripts/526798-youtube-auto-resume . Reference for checkpoint, playlist identity and retention; no YouTube Helper API @require bundled or loaded.
+- iamfugui / youtube-adb v6.21, MIT: https://github.com/iamfugui/youtube-adb . Reference for cosmetic ad selectors and ad detection; deliberately omits forced end-of-ad seek and arbitrary popup removal.
+- hxueh / SponsorBlock Lite v1.2.0, LGPL-3.0-or-later: https://greasyfork.org/scripts/560869 . Reference for feature expectations, not copied source code. Do not mislabel its LGPL material as MIT.
+- Public API descriptions: https://wiki.sponsor.ajay.app/w/API_Docs and https://github.com/hanydd/BilibiliSponsorBlock/wiki/API .
+
+Implementation is original adaptations to existing project structure, with feature gates and bounded validation. API/database licenses and site terms remain independent of the repository's MIT declaration. Independent licensing review and real-site testing are NOT RUN; do not claim verified legal or behavioral equivalence with upstream.
