@@ -15,7 +15,7 @@ const values = key => metadata.get(key) ?? [];
 assert.deepEqual(values('version'), [pkg.version]);
 assert.deepEqual(values('license'), ['MIT']);
 assert.deepEqual(values('grant'), ['GM_xmlhttpRequest']);
-assert.deepEqual(values('connect'), ['sponsor.ajay.app']);
+assert.deepEqual(values('connect'), ['sponsor.ajay.app', 'bsbsb.top']);
 assert.deepEqual(values('run-at'), ['document-idle']);
 assert.deepEqual(values('require'), []);
 for (const key of ['updateURL', 'downloadURL']) assert.deepEqual(values(key), ['https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js']);
