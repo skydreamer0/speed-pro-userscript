@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0 — Playback Suite candidate (stacked Draft PRs, NOT RELEASED)
+
+- Rename candidate display name from Speed Pro to Playback Suite while retaining the existing namespace, stable raw path and localStorage settings keys.
+- Generation-scoped media seek coordinator; reject stale route/media and out-of-range feature seeks.
+- Opt-in YouTube checkpoint auto-resume, standalone vs playlist separation, completed/expired records and clear-history UI (YouTube-origin localStorage).
+- Unified SponsorBlock parser: hash-prefix requests, exact ID and Bilibili current-page CID validation, optional timeline markers, full-video label.
+- Conservative YouTube ad improvement: native visible skip button, improved ad mute ownership and reversible static-ad CSS; no forced skip to end, no forced autoplay.
+- New @connect bsbsb.top; no external @require or additional GM grants.
+- Extended production-function VM test suite (16 fixture groups at PR #7); real-site/Tampermonkey/complete-DOM validation NOT RUN.
+- Known gaps: Bilibili sandbox CID visibility; thumbnail/cross-tab progress sync not yet implemented; localStorage is site-readable; package and display branding are not a repository rename.
+
 ## 1.2.0 — candidate, not released on main
 
 - Experimental Bilibili `/video/*` main-player adapter; native key preservation and media lifecycle handling.
