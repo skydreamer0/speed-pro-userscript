@@ -38,6 +38,11 @@
         rememberGlobal: true,
         rememberChannel: true,
         sponsorBlock: true,
+        resumeEnabled: false,
+        resumePlaylistJump: false,
+        bilibiliSponsorBlock: false,
+        showSponsorMarkers: false,
+        cosmeticAdFiltering: false,
         sponsorCategories: ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro', 'preview', 'music_offtopic', 'filler'],
         autoSkipAds: true,
         muteAds: true,
@@ -72,6 +77,31 @@
     let rateTimer = null;
     let navigationTimer = null;
     let suspended = false;
+    // Single, generation-scoped media seek gate shared by future resume and sponsor modules.
+    // All feature-owned currentTime writes must pass through this gate.
+    const MediaCoordinator = {
+        generation: 0,
+        invalidate() { this.generation++; },
+        snapshot() {
+            return { generation: this.generation, video: currentVideo, url: location.href };
+        },
+        isCurrent(token) {
+            return Boolean(token && !suspended && inScope() && token.video &&
+                token.video === currentVideo && token.generation === this.generation &&
+                token.url === location.href);
+        },
+        seek(token, time) {
+            if (!this.isCurrent(token) || !Number.isFinite(time) || time < 0) return false;
+            const video = token.video;
+            if (Number.isFinite(video.duration) && time > video.duration + 1) return false;
+            // Sponsor / resume must never seek the content while an ad player is active.
+            if (isYouTube && document.querySelector('#movie_player')?.classList?.contains('ad-showing')) return false;
+            try {
+                video.currentTime = time;
+                return Math.abs(video.currentTime - time) <= 2;
+            } catch { return false; }
+        }
+    };
     function stateFor(video) {
         if (!videoStates.has(video)) videoStates.set(video, {
             baseline: video.playbackRate, source: video.currentSrc || video.src || '',
@@ -1273,7 +1303,8 @@
         if (!segment) return;
 
         const from = t;
-        currentVideo.currentTime = segment.end + 0.03;
+        const token = MediaCoordinator.snapshot();
+        if (!MediaCoordinator.seek(token, segment.end + 0.03)) return;
 
         lastSponsorSkip = {
             uuid: segment.uuid,
@@ -1288,9 +1319,7 @@
             duration: 3200,
             actionText: '返回',
             onAction: () => {
-                if (currentVideo) {
-                    currentVideo.currentTime = Math.max(segment.start, from);
-                }
+                MediaCoordinator.seek(token, Math.max(segment.start, from));
             }
         });
     }
@@ -1331,6 +1360,7 @@
         if (video === currentVideo) return;
         releaseTemporaryHold();
         const previous = currentVideo;
+        MediaCoordinator.invalidate();
         unbindVideo();
         currentVideo = null;
         // Restore the old controlled player before leaving it; previews are never touched.
@@ -1353,6 +1383,7 @@
             rateTimer = null;
             const source = video.currentSrc || video.src || '';
             if (source && source !== state.source) {
+                MediaCoordinator.invalidate();
                 state.source = source;
                 if (!locked || Math.abs(video.playbackRate - effectiveSpeed()) > 0.01) state.baseline = video.playbackRate;
                 // Media events never replenish the budget; only explicit user commands do.
@@ -1373,6 +1404,8 @@
     }
 
     function onNavigation() {
+        MediaCoordinator.invalidate();
+        sponsorFetchToken++; // Reject responses from the prior route immediately.
         releaseTemporaryHold();
         currentVideoId = getVideoId();
         currentChannelKey = null;
