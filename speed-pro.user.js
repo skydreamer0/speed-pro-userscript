@@ -68,8 +68,9 @@
     let sponsorFetchToken = 0;
     let lastSponsorSkip = null;
 
-    let adWasMuted = false;
-    let volumeBeforeAd = null;
+    let adMuteState = null;
+    let lastAdSkipAt = 0;
+    let lastAdSkipButton = null;
 
     let controlButton = null;
     let floatControls = null;
@@ -1231,6 +1232,15 @@
                 })
             ),
             panelRow(
+                '隱藏 YouTube 靜態廣告',
+                '只隱藏已辨識的頁面廣告元素，不會強制快轉或自動播放',
+                makeToggle(settings.cosmeticAdFiltering, value => {
+                    settings.cosmeticAdFiltering = value;
+                    saveSettings();
+                    applyCosmeticAdFiltering();
+                })
+            ),
+            panelRow(
                 '提示訊息',
                 '顯示速度與跳段提示',
                 makeToggle(settings.showToasts, value => {
@@ -1242,7 +1252,7 @@
 
         if (!isYouTube) {
             // 跨站控制只展示真正支援的功能，避免 FB 顯示 YouTube 專屬設定。
-            const youtubeOnly = ['每頻道記憶', 'SponsorBlock', '自動續播（YouTube）', '播放清單接續上一支', '廣告可跳過時自動略過', '廣告期間自動靜音'];
+            const youtubeOnly = ['隱藏 YouTube 靜態廣告', '每頻道記憶', 'SponsorBlock', '自動續播（YouTube）', '播放清單接續上一支', '廣告可跳過時自動略過', '廣告期間自動靜音'];
             panel.querySelectorAll(`.${APP}-row`).forEach(row => {
                 if (youtubeOnly.some(label => row.textContent.includes(label))) row.remove();
             });
@@ -1289,6 +1299,7 @@
             const keys = { '每頻道記憶': 'rememberChannel', 'SponsorBlock': 'sponsorBlock',
                 '自動續播（YouTube）': 'resumeEnabled', '播放清單接續上一支': 'resumePlaylistJump',
                 'Bilibili 贊助片段': 'bilibiliSponsorBlock', '贊助進度條標記': 'showSponsorMarkers',
+                '隱藏 YouTube 靜態廣告': 'cosmeticAdFiltering',
                 '廣告可跳過時自動略過': 'autoSkipAds', '廣告期間自動靜音': 'muteAds', '提示訊息': 'showToasts' };
             panel.querySelectorAll(`.${APP}-row`).forEach(row => {
                 const key = keys[row.querySelector(`.${APP}-label-main`)?.textContent];
@@ -1297,6 +1308,8 @@
             });
             renderPanelValues();
             updateControlUI();
+            restoreAdMute();
+            applyCosmeticAdFiltering();
             showToast('設定已重設', { force: true });
         });
 
@@ -1665,35 +1678,91 @@
         });
     }
 
+
+    // Cosmetic-only ad cleanup. Does not alter request streams or interfere with
+    // playback/account dialogs. Styles are removable and YouTube-only.
+    function applyCosmeticAdFiltering() {
+        const id = APP + '-cosmetic-ads';
+        const existing = document.getElementById(id);
+        if (!isYouTube || !settings.cosmeticAdFiltering || suspended) {
+            existing?.remove();
+            return;
+        }
+        if (existing || !document.head) return;
+        const style = document.createElement('style');
+        style.id = id;
+        style.textContent = [
+            '#masthead-ad',
+            'ytd-ad-slot-renderer',
+            'ytd-display-ad-renderer',
+            'ytd-in-feed-ad-layout-renderer',
+            '#player-ads',
+            '#related ytd-ad-slot-renderer'
+        ].join(',') + '{display:none!important;}';
+        document.head.appendChild(style);
+    }
+
+    function restoreAdMute() {
+        const state = adMuteState;
+        if (!state) return;
+        adMuteState = null;
+        state.video.removeEventListener('volumechange', state.onVolumeChange);
+        // If the user changed the mute state during the ad, leave their choice intact.
+        if (!state.userChanged && state.video.muted === true) {
+            try { state.video.muted = state.originalMuted; } catch { /* player controlled */ }
+        }
+    }
+
+    function muteForAd(video) {
+        if (adMuteState?.video === video) return;
+        restoreAdMute();
+        if (video.muted) return; // An already-muted player is owned by the user/site.
+        const state = {
+            video, originalMuted: Boolean(video.muted), pendingOwnChange: true,
+            userChanged: false, onVolumeChange: null
+        };
+        state.onVolumeChange = () => {
+            if (state.pendingOwnChange && video.muted) {
+                state.pendingOwnChange = false;
+                return;
+            }
+            state.userChanged = true;
+        };
+        adMuteState = state;
+        video.addEventListener('volumechange', state.onVolumeChange);
+        try {
+            video.muted = true;
+            setTimeout(() => { state.pendingOwnChange = false; }, 250);
+        } catch { restoreAdMute(); }
+    }
+
     function handleAdAssist() {
         if (!isYouTube) return;
         const player = document.querySelector('#movie_player');
         const video = getVideo();
-        if (!player || !video) return;
+        const isAd = Boolean(player?.classList?.contains('ad-showing'));
+        if (!video || !isAd) {
+            restoreAdMute();
+            lastAdSkipButton = null;
+            return;
+        }
+        if (settings.muteAds) muteForAd(video);
+        else restoreAdMute();
 
-        const isAd = player.classList.contains('ad-showing');
-
-        if (isAd) {
-            if (settings.muteAds && !adWasMuted) {
-                volumeBeforeAd = video.muted;
-                video.muted = true;
-                adWasMuted = true;
-            }
-
-            if (settings.autoSkipAds) {
-                const skipButton =
-                    document.querySelector('.ytp-ad-skip-button-modern') ||
-                    document.querySelector('.ytp-ad-skip-button') ||
-                    document.querySelector('.ytp-skip-ad-button');
-
-                if (skipButton && !skipButton.disabled) {
-                    skipButton.click();
-                }
-            }
-        } else if (adWasMuted) {
-            video.muted = Boolean(volumeBeforeAd);
-            adWasMuted = false;
-            volumeBeforeAd = null;
+        if (!settings.autoSkipAds) return;
+        const skipButton =
+            document.querySelector('.ytp-ad-skip-button-modern') ||
+            document.querySelector('.ytp-ad-skip-button') ||
+            document.querySelector('.ytp-skip-ad-button');
+        if (!skipButton || skipButton.disabled || skipButton.getAttribute?.('aria-disabled') === 'true') return;
+        const isVisible = skipButton.offsetParent !== null ||
+            (skipButton.getClientRects?.().length ?? 0) > 0;
+        if (!isVisible) return;
+        const now = Date.now();
+        if (skipButton !== lastAdSkipButton || now - lastAdSkipAt > 1500) {
+            skipButton.click();
+            lastAdSkipAt = now;
+            lastAdSkipButton = skipButton;
         }
     }
 
@@ -1701,6 +1770,7 @@
         if (video === currentVideo) return;
         releaseTemporaryHold();
         const previous = currentVideo;
+        restoreAdMute();
         MediaCoordinator.invalidate();
         unbindVideo();
         currentVideo = null;
@@ -1957,6 +2027,8 @@
     window.addEventListener('pagehide', () => {
         ResumeManager.detach();
         clearSponsorVisuals();
+        restoreAdMute();
+        document.getElementById(APP + '-cosmetic-ads')?.remove();
         releaseTemporaryHold();
         bindVideo(null);
         suspended = true;
@@ -1972,6 +2044,7 @@
         observer.observe(document.documentElement, { childList: true, subtree: true });
         watchdog = setInterval(tick, 800);
         refreshActiveVideo();
+        applyCosmeticAdFiltering();
         if (isYouTube) { ResumeManager.attach(currentVideo); ResumeManager.tryRestore(currentVideo); }
     });
 
@@ -1980,6 +2053,7 @@
     });
 
     ensureStyles();
+    applyCosmeticAdFiltering();
     bindVideo(getVideo());
     ensureControlButton();
     onNavigation();
