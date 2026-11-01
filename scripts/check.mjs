@@ -13,6 +13,8 @@ for (const [, key, value] of block.matchAll(/^\/\/\s+@(\S+)\s+(.+)$/gm)) {
 }
 const values = key => metadata.get(key) ?? [];
 assert.deepEqual(values('version'), [pkg.version]);
+assert.deepEqual(values('name'), ['Playback Suite - Cross-platform Video Companion']);
+assert.equal(pkg.name, 'playback-suite-userscript');
 assert.deepEqual(values('license'), ['MIT']);
 assert.deepEqual(values('grant'), ['GM_xmlhttpRequest']);
 assert.deepEqual(values('connect'), ['sponsor.ajay.app', 'bsbsb.top']);
