@@ -14,7 +14,7 @@ function fixture(host = 'www.bilibili.com', path = '/video/BVfixture/') {
   vm.runInContext(source.slice(0, source.indexOf("    document.addEventListener('keydown'")) + `
     showToast = () => {}; updateControlUI = () => {}; renderPanelValues = () => {};
     globalThis.api = { getVideo, bindVideo, startHold, stopHold, toggleLock, setPreset, enforceRate,
-      ignoreInput, fetchSponsorSegments, releaseTemporaryHold, stateFor,
+      ignoreInput, fetchSponsorSegments, releaseTemporaryHold, stateFor, coordinator: MediaCoordinator,
       media: () => currentVideo, flags: () => ({locked, holdActive}),
       navigation: () => { currentVideoId = getVideoId(); }, defaults: () => settings };
   })();`, context);
@@ -51,6 +51,14 @@ test('adversarial rate reset is bounded across metadata events and watchdog', ()
  const f=fixture(); const a=f.video(); a.reset=true; f.bindVideo(a); f.setPreset(2); f.drain(); assert.equal(a.writes(),4); assert.equal(f.stateFor(a).blocked,true);
  for(let i=0;i<20;i++){ a.emit('loadstart'); a.emit('loadedmetadata'); f.enforceRate(); f.drain(); }
  assert.equal(a.writes(),4); a.reset=false; f.setPreset(2); assert.equal(a.playbackRate,2);
+});
+test('media coordinator rejects stale generation and invalid seek', () => {
+ const f=fixture(); const first=f.video(1.25); f.bindVideo(first);
+ const token=f.coordinator.snapshot(); first.currentTime=10; first.duration=100;
+ assert.equal(f.coordinator.seek(token,20),true); assert.equal(first.currentTime,20);
+ assert.equal(f.coordinator.seek(token,150),false);
+ const second=f.video(1.5); f.bindVideo(second);
+ assert.equal(f.coordinator.seek(token,25),false); assert.equal(first.currentTime,20);
 });
 test('media reload cancels hold and keeps independent baseline', () => {
  const f=fixture(); const a=f.video(1.5); f.bindVideo(a); f.startHold(); a.emit('loadstart'); assert.equal(a.playbackRate,1.5); assert.equal(f.flags().holdActive,false);
