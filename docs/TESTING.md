@@ -1,3 +1,15 @@
+# Playback Suite 2.0 candidate testing status
+
+**GitHub Actions (stacked PR #7 head, 2026-11-01):** npm test PASS. No external npm dependencies; static metadata allowlist and 16 production-function VM fixture groups passed. This is synthetic evidence, NOT real browser/site, legal, cross-tab, or Tampermonkey certification.
+
+New fixtures cover generation-scoped seek rejection, standalone vs playlist checkpoints, explicit URL timestamps, Bilibili BV/CID page validation, segment invalid-range/full-action filtering, ad-state-gated skip/mute, and reversible cosmetic CSS. Existing Bilibili main video and four-site control regression fixtures remain.
+
+**Outstanding required real tests:** YouTube watch/playlist, ad transitions, manual seeks, navigation/thumbnail changes; Bilibili p=1 -> p=2 on live DOM and sandbox CID exposure; social-site playback controls; Tampermonkey installation/upgrade/duplicate-script identity; Chromium full DOM, multi-tab races and restored BFCache sessions. Show PASS/FAIL/BLOCKED/NOT RUN per case.
+
+Existing 1.2.0 testing notes retained below for history.
+
+---
+
 # 測試 — 1.2.0 candidate
 
 ## 可重跑
