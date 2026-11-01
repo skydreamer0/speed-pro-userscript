@@ -73,6 +73,7 @@ test('resume respects explicit YouTube t, completion, and stale checkpoints', ()
  f.location.href='https://www.youtube.com/watch?v=abcdefghijk';
  f.bindVideo(v); f.resume.write(f.resume.keyFor('abcdefghijk'),
     {time:30,duration:120,completed:false,savedAt:Date.now()});
+ f.resume.detach(); // Reset initial no-checkpoint attempt before simulating a fresh page.
  f.resume.attach(v); assert.equal(f.resume.tryRestore(v),true); assert.equal(v.currentTime,30);
  f.resume.detach(); v.currentTime=0;
  f.location.href='https://www.youtube.com/watch?v=abcdefghijk&t=10';
