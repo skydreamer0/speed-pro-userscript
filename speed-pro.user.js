@@ -18,6 +18,7 @@
 // @match https://www.threads.net/*
 // @grant        GM_xmlhttpRequest
 // @connect      sponsor.ajay.app
+// @connect      bsbsb.top
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -63,6 +64,7 @@
     let turboActive = false;
 
     let sponsorSegments = [];
+    let sponsorFullLabel = null;
     let sponsorFetchToken = 0;
     let lastSponsorSkip = null;
 
@@ -1169,7 +1171,26 @@
                     settings.sponsorBlock = value;
                     saveSettings();
                     if (value) fetchSponsorSegments();
-                    else sponsorSegments = [];
+                    else { sponsorFetchToken++; sponsorSegments = []; sponsorFullLabel = null; clearSponsorVisuals(); }
+                })
+            ),
+            panelRow(
+                'Bilibili 贊助片段',
+                '僅在能確認目前分 P 的 CID 時取得並跳過片段',
+                makeToggle(settings.bilibiliSponsorBlock, value => {
+                    settings.bilibiliSponsorBlock = value;
+                    saveSettings();
+                    if (value) fetchSponsorSegments();
+                    else { sponsorFetchToken++; sponsorSegments = []; sponsorFullLabel = null; clearSponsorVisuals(); }
+                })
+            ),
+            panelRow(
+                '贊助進度條標記',
+                '在辨識的播放器進度條顯示片段顏色',
+                makeToggle(settings.showSponsorMarkers, value => {
+                    settings.showSponsorMarkers = value;
+                    saveSettings();
+                    renderSponsorVisuals();
                 })
             ),
             panelRow(
@@ -1227,8 +1248,19 @@
             });
             panel.querySelector('[data-action="reset-channel"]')?.remove();
             panel.querySelector('[data-action="clear-resume"]')?.remove();
+            if (!isBilibili) {
+                const bilingualOnly = ['Bilibili 贊助片段', '贊助進度條標記'];
+                panel.querySelectorAll(`.${APP}-row`).forEach(row => {
+                    if (bilingualOnly.some(label => row.textContent.includes(label))) row.remove();
+                });
+            }
         }
 
+        if (isYouTube) {
+            panel.querySelectorAll(`.${APP}-row`).forEach(row => {
+                if (row.textContent.includes('Bilibili 贊助片段')) row.remove();
+            });
+        }
         panel.querySelector('[data-action="clear-resume"]')?.addEventListener('click', () => {
             showToast(ResumeManager.clearHistory() ? '續播紀錄已清除' : '無法清除續播紀錄', { force: true });
         });
@@ -1256,6 +1288,7 @@
             numbers[1].value = settings.turboSpeed;
             const keys = { '每頻道記憶': 'rememberChannel', 'SponsorBlock': 'sponsorBlock',
                 '自動續播（YouTube）': 'resumeEnabled', '播放清單接續上一支': 'resumePlaylistJump',
+                'Bilibili 贊助片段': 'bilibiliSponsorBlock', '贊助進度條標記': 'showSponsorMarkers',
                 '廣告可跳過時自動略過': 'autoSkipAds', '廣告期間自動靜音': 'muteAds', '提示訊息': 'showToasts' };
             panel.querySelectorAll(`.${APP}-row`).forEach(row => {
                 const key = keys[row.querySelector(`.${APP}-label-main`)?.textContent];
@@ -1426,51 +1459,159 @@
         });
     }
 
+
+    // No Bilibili segment can be used without a verified video ID and page CID.
+    // This data is not reliably accessible in all userscript sandboxes; fail closed.
+    function getBilibiliSponsorIdentity() {
+        if (!isBilibili || !inScope()) return null;
+        const bv = location.pathname.match(/^\/video\/(BV[0-9A-Za-z]{10})(?:\/|$)/)?.[1];
+        if (!bv) return null;
+        const p = Number(new URL(location.href).searchParams.get('p') || 1);
+        if (!Number.isSafeInteger(p) || p < 1 || p > 1000) return null;
+        const videoData = window.__INITIAL_STATE__?.videoData;
+        if (!videoData || videoData.bvid !== bv || !Array.isArray(videoData.pages)) return null;
+        const cid = Number(videoData.pages[p - 1]?.cid);
+        if (!Number.isSafeInteger(cid) || cid <= 0) return null;
+        return { platform: 'bilibili', videoId: bv, cid: String(cid), page: p };
+    }
+
+    function sponsorIdentity() {
+        if (isBilibili) return settings.bilibiliSponsorBlock ? getBilibiliSponsorIdentity() : null;
+        if (!isYouTube || !settings.sponsorBlock) return null;
+        const id = getVideoId();
+        return /^[A-Za-z0-9_-]{11}$/.test(id || '') ? { platform: 'youtube', videoId: id } : null;
+    }
+
+    async function sponsorHashPrefix(id) {
+        if (!crypto?.subtle) return null;
+        const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(id));
+        return Array.from(new Uint8Array(hash).slice(0, 2)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+    }
+
+    function normalizeSponsorBucket(bucket, identity, duration) {
+        if (!identity || !Array.isArray(bucket) || !Number.isFinite(duration) || duration <= 0) {
+            return { segments: [], fullLabel: null };
+        }
+        const record = bucket.find(entry => entry?.videoID === identity.videoId);
+        if (!record || !Array.isArray(record.segments)) return { segments: [], fullLabel: null };
+        const allowed = identity.platform === 'bilibili'
+            ? new Set(['sponsor', 'selfpromo', 'exclusive_access', 'interaction', 'outro'])
+            : new Set(settings.sponsorCategories.filter(c => c !== 'music_offtopic'));
+        const accepted = [];
+        let fullLabel = null;
+        for (const segment of record.segments.slice(0, 300)) {
+            if (!Array.isArray(segment?.segment) || segment.segment.length !== 2) continue;
+            const start = Number(segment.segment[0]), end = Number(segment.segment[1]);
+            if (!Number.isFinite(start) || !Number.isFinite(end) ||
+                start < 0 || start >= end || end > duration + 2 ||
+                !allowed.has(segment.category)) continue;
+            if (identity.platform === 'bilibili' && String(segment.cid) !== identity.cid) continue;
+            if (segment.actionType === 'full') {
+                fullLabel = segment.category;
+                continue;
+            }
+            if (segment.actionType && segment.actionType !== 'skip') continue;
+            accepted.push({ start, end, category: segment.category, uuid: String(segment.UUID || '') });
+        }
+        accepted.sort((a, b) => a.start - b.start || a.end - b.end);
+        return { segments: accepted.slice(0, 150), fullLabel };
+    }
+
+    function clearSponsorVisuals() {
+        document.getElementById(APP + '-sponsor-markers')?.remove();
+        document.getElementById(APP + '-sponsor-label')?.remove();
+    }
+
+    function renderSponsorVisuals() {
+        const enabled = isBilibili ? settings.bilibiliSponsorBlock : settings.sponsorBlock;
+        const video = getVideo();
+        const duration = Number(video?.duration);
+        const bar = isBilibili
+            ? document.querySelector('.bpx-player-progress-wrap, .bpx-player-progress')
+            : document.querySelector('.ytp-progress-bar');
+        const old = document.getElementById(APP + '-sponsor-markers');
+        if (!enabled || !settings.showSponsorMarkers || !bar ||
+            !Number.isFinite(duration) || duration <= 0 || !sponsorSegments.length) {
+            old?.remove();
+        } else {
+            // The site controls its progress bar layout. Fail closed on unknown positioning.
+            const positioned = window.getComputedStyle?.(bar)?.position;
+            if (positioned && positioned !== 'static') {
+                const stamp = sponsorSegments.length + ':' + Math.floor(duration);
+                if (!old || old.parentElement !== bar || old.dataset.stamp !== stamp) {
+                    old?.remove();
+                    const overlay = document.createElement('div');
+                    overlay.id = APP + '-sponsor-markers';
+                    overlay.dataset.stamp = stamp;
+                    overlay.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:40;';
+                    const colors = {
+                        sponsor: '#00d400', selfpromo: '#e4db20', exclusive_access: '#008a5c',
+                        interaction: '#bb20ee', intro: '#33bbcc', outro: '#2244dd',
+                        preview: '#65b8ec', filler: '#999999'
+                    };
+                    for (const item of sponsorSegments) {
+                        const start = Math.max(0, Math.min(100, item.start / duration * 100));
+                        const end = Math.max(start, Math.min(100, item.end / duration * 100));
+                        const mark = document.createElement('span');
+                        mark.title = sponsorLabel(item.category);
+                        mark.style.cssText = 'position:absolute;top:0;height:100%;opacity:.75;';
+                        mark.style.left = start + '%';
+                        mark.style.width = (end - start) + '%';
+                        mark.style.backgroundColor = colors[item.category] || '#aaa';
+                        overlay.appendChild(mark);
+                    }
+                    bar.appendChild(overlay);
+                }
+            }
+        }
+        const oldLabel = document.getElementById(APP + '-sponsor-label');
+        if (!enabled || !sponsorFullLabel) { oldLabel?.remove(); return; }
+        const title = isBilibili ? document.querySelector('.video-title')
+            : document.querySelector('ytd-watch-metadata #title h1');
+        if (!title) return;
+        if (oldLabel && oldLabel.parentElement === title) return;
+        oldLabel?.remove();
+        const label = document.createElement('span');
+        label.id = APP + '-sponsor-label';
+        label.textContent = sponsorLabel(sponsorFullLabel);
+        label.style.cssText = 'display:inline-block;margin-left:8px;padding:2px 6px;border-radius:4px;background:#245b43;color:#fff;font:500 11px sans-serif;';
+        title.appendChild(label);
+    }
+
     async function fetchSponsorSegments() {
-        if (!isYouTube || !settings.sponsorBlock) {
-            sponsorSegments = [];
-            return;
-        }
-
-        const videoId = getVideoId();
-        if (!videoId) {
-            sponsorSegments = [];
-            return;
-        }
-
+        const identity = sponsorIdentity();
         const token = ++sponsorFetchToken;
-        currentVideoId = videoId;
-
+        sponsorSegments = [];
+        sponsorFullLabel = null;
+        clearSponsorVisuals();
+        if (!identity || !inScope()) return;
+        const requestUrl = location.href;
         try {
-            const categories = encodeURIComponent(JSON.stringify(settings.sponsorCategories));
-            const url = `https://sponsor.ajay.app/api/skipSegments?videoID=${encodeURIComponent(videoId)}&categories=${categories}`;
+            const prefix = await sponsorHashPrefix(identity.videoId);
+            if (!prefix || token !== sponsorFetchToken || location.href !== requestUrl) return;
+            const categories = identity.platform === 'bilibili'
+                ? ['sponsor', 'selfpromo', 'exclusive_access', 'interaction', 'outro']
+                : settings.sponsorCategories.filter(c => c !== 'music_offtopic');
+            const base = identity.platform === 'bilibili' ? 'https://bsbsb.top' : 'https://sponsor.ajay.app';
+            const url = base + '/api/skipSegments/' + prefix +
+                '?categories=' + encodeURIComponent(JSON.stringify(categories)) +
+                '&actionTypes=' + encodeURIComponent(JSON.stringify(['skip', 'full']));
             const response = await gmGet(url);
-
-            if (token !== sponsorFetchToken) return;
-
-            if (response.status === 404) {
-                sponsorSegments = [];
-                return;
-            }
-
-            if (response.status < 200 || response.status >= 300) {
-                sponsorSegments = [];
-                return;
-            }
-
-            const data = JSON.parse(response.responseText);
-            sponsorSegments = Array.isArray(data)
-                ? data
-                    .filter(item => Array.isArray(item.segment) && item.segment.length === 2)
-                    .map(item => ({
-                        start: Number(item.segment[0]),
-                        end: Number(item.segment[1]),
-                        category: item.category || 'segment',
-                        uuid: item.UUID || ''
-                    }))
-                : [];
+            if (token !== sponsorFetchToken || location.href !== requestUrl ||
+                response.status < 200 || response.status >= 300) return;
+            const parsed = JSON.parse(response.responseText);
+            const duration = Number(getVideo()?.duration);
+            const result = normalizeSponsorBucket(parsed, identity, duration);
+            if (token !== sponsorFetchToken || location.href !== requestUrl) return;
+            sponsorSegments = result.segments;
+            sponsorFullLabel = result.fullLabel;
+            renderSponsorVisuals();
         } catch {
-            sponsorSegments = [];
+            if (token === sponsorFetchToken) {
+                sponsorSegments = [];
+                sponsorFullLabel = null;
+                clearSponsorVisuals();
+            }
         }
     }
 
@@ -1483,13 +1624,14 @@
             outro: '片尾',
             preview: '預告',
             music_offtopic: '非音樂內容',
-            filler: '填充內容'
+            filler: '填充內容',
+            exclusive_access: '限定內容'
         };
         return labels[category] || category;
     }
 
     function checkSponsorSkip() {
-        if (!settings.sponsorBlock || !currentVideo || sponsorSegments.length === 0) return;
+        if (!(isBilibili ? settings.bilibiliSponsorBlock : settings.sponsorBlock) || !currentVideo || sponsorSegments.length === 0) return;
 
         const t = currentVideo.currentTime;
 
@@ -1590,13 +1732,13 @@
             if (event.type === 'loadedmetadata') {
                 enforceRate();
                 if (isYouTube) ResumeManager.tryRestore(video);
+                if ((isYouTube || isBilibili) && !sponsorSegments.length) fetchSponsorSegments();
+                renderSponsorVisuals();
             }
         };
         const onTime = () => {
-            if (isYouTube) {
-                ResumeManager.save(video);
-                checkSponsorSkip();
-            }
+            if (isYouTube) ResumeManager.save(video);
+            if (isYouTube || isBilibili) checkSponsorSkip();
         };
         const onSeeking = () => { if (isYouTube) ResumeManager.onSeeking(video); };
         const onPause = () => { if (isYouTube) ResumeManager.save(video, true); };
@@ -1632,6 +1774,8 @@
         currentVideoId = getVideoId();
         currentChannelKey = null;
         sponsorSegments = [];
+        sponsorFullLabel = null;
+        clearSponsorVisuals();
         lastSponsorSkip = null;
         clearTimeout(navigationTimer);
         navigationTimer = setTimeout(() => {
@@ -1641,7 +1785,7 @@
             if (isYouTube) { ResumeManager.attach(currentVideo); ResumeManager.tryRestore(currentVideo); }
             ensureControlButton();
             restoreRememberedSpeed();
-            if (isYouTube) fetchSponsorSegments();
+            if (isYouTube || isBilibili) fetchSponsorSegments();
         }, 450);
     }
 
@@ -1804,6 +1948,7 @@
             ResumeManager.tryRestore(currentVideo);
             ResumeManager.cleanup();
         }
+        if (isYouTube || isBilibili) renderSponsorVisuals();
     }
     let watchdog = setInterval(tick, 800);
 
@@ -1811,6 +1956,7 @@
     document.addEventListener('visibilitychange', () => { if (document.hidden) releaseTemporaryHold(); });
     window.addEventListener('pagehide', () => {
         ResumeManager.detach();
+        clearSponsorVisuals();
         releaseTemporaryHold();
         bindVideo(null);
         suspended = true;
