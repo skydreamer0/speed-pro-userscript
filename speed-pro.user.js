@@ -102,6 +102,178 @@
             } catch { return false; }
         }
     };
+
+    // Opt-in YouTube checkpoints; intentionally no copied YouTube Helper API or extra GM grants.
+    // Same-origin localStorage is visible to site JavaScript. See the integration SPEC.
+    const ResumeManager = {
+        prefix: APP + ':resume:v1:',
+        active: null,
+        lastSweep: 0,
+        lastErrorShown: false,
+        context() {
+            if (!isYouTube) return null;
+            try {
+                const url = new URL(location.href);
+                if (url.pathname !== '/watch') return null;
+                const id = url.searchParams.get('v');
+                if (!/^[A-Za-z0-9_-]{11}$/.test(id || '')) return null;
+                const candidate = url.searchParams.get('list');
+                const playlistId = candidate && candidate !== 'WL' && /^[A-Za-z0-9_-]{1,120}$/.test(candidate) ? candidate : null;
+                return {
+                    id, playlistId,
+                    key: this.keyFor(id, playlistId),
+                    explicitTime: ['t', 'start', 'time_continue'].some(key => url.searchParams.has(key)),
+                    explicitIndex: url.searchParams.has('index')
+                };
+            } catch { return null; }
+        },
+        keyFor(id, playlistId = null) {
+            return this.prefix + 'progress:' + (playlistId ? 'list:' + playlistId : 'standalone') + ':' + id;
+        },
+        read(key) {
+            try {
+                const value = localStorage.getItem(key);
+                if (!value) return null;
+                const parsed = JSON.parse(value);
+                return parsed && typeof parsed === 'object' ? parsed : null;
+            } catch { return null; }
+        },
+        write(key, value) {
+            try {
+                const previous = this.read(key);
+                if (previous && Number(previous.savedAt) > value.savedAt) return false;
+                localStorage.setItem(key, JSON.stringify(value));
+                return true;
+            } catch {
+                if (!this.lastErrorShown) {
+                    this.lastErrorShown = true;
+                    showToast('無法儲存續播進度：瀏覽器儲存空間不可用', { force: true });
+                }
+                return false;
+            }
+        },
+        attach(video) {
+            const ctx = this.context();
+            if (!settings.resumeEnabled || !video || !ctx) {
+                this.active = null;
+                return;
+            }
+            if (this.active?.video === video && this.active.ctx.key === ctx.key) return;
+            this.active = {
+                video, ctx, restored: false, userSeeked: false, lastSavedAt: 0,
+                startedAt: Date.now(), ignoreOwnSeekUntil: 0
+            };
+        },
+        detach() {
+            this.save(this.active?.video, true);
+            this.active = null;
+        },
+        onSeeking(video) {
+            const state = this.active;
+            if (!state || state.video !== video || Date.now() < state.ignoreOwnSeekUntil) return;
+            // Explicit user/native player seeks must win over our initial restore.
+            if (video.currentTime > 1 || state.ctx.explicitTime) state.userSeeked = true;
+        },
+        isAd() {
+            return Boolean(document.querySelector('#movie_player')?.classList?.contains('ad-showing'));
+        },
+        maybeJumpPlaylist(state) {
+            if (!settings.resumePlaylistJump || !state.ctx.playlistId || state.ctx.explicitIndex) return false;
+            const last = this.read(this.prefix + 'last:' + state.ctx.playlistId);
+            if (!last || last.videoId === state.ctx.id) return false;
+            const player = document.querySelector('#movie_player');
+            const list = player?.getPlaylist?.();
+            const index = Array.isArray(list) ? list.indexOf(last.videoId) : -1;
+            if (index < 0 || typeof player?.playVideoAt !== 'function') return false;
+            try { player.playVideoAt(index); return true; } catch { return false; }
+        },
+        tryRestore(video) {
+            const state = this.active;
+            if (!settings.resumeEnabled || !state || !video || state.video !== video ||
+                state.restored || state.userSeeked || !MediaCoordinator.isCurrent(MediaCoordinator.snapshot())) return false;
+            const ctx = this.context();
+            if (!ctx || ctx.key !== state.ctx.key) return false;
+            if (ctx.explicitTime || Date.now() - state.startedAt > 30000) {
+                state.restored = true;
+                return false;
+            }
+            if (this.isAd()) return false;
+            const duration = Number(video.duration);
+            if (!Number.isFinite(duration) || duration < 10 || video.readyState < 1) return false;
+            // If YouTube has already selected an actual position, preserve it.
+            if (video.currentTime > 3 || video.seeking) {
+                state.restored = true;
+                return false;
+            }
+            if (this.maybeJumpPlaylist(state)) {
+                state.restored = true;
+                return true;
+            }
+            const saved = this.read(ctx.key);
+            const endMargin = Math.min(15, Math.max(1, duration * 0.01));
+            if (!saved || saved.completed || !Number.isFinite(saved.time) || !Number.isFinite(saved.duration) ||
+                saved.time < 5 || saved.time >= duration - endMargin ||
+                Date.now() - saved.savedAt > 90 * 86400000 ||
+                Math.abs(saved.duration - duration) > Math.max(3, duration * 0.05)) {
+                state.restored = true;
+                return false;
+            }
+            state.ignoreOwnSeekUntil = Date.now() + 1500;
+            const ok = MediaCoordinator.seek(MediaCoordinator.snapshot(), saved.time);
+            if (!ok) { state.ignoreOwnSeekUntil = 0; return false; }
+            state.restored = true;
+            showToast('已接續上次播放進度');
+            return true;
+        },
+        save(video, force = false) {
+            const state = this.active;
+            if (!settings.resumeEnabled || !state || !video || state.video !== video || this.isAd()) return;
+            if (this.context()?.key !== state.ctx.key) return;
+            const now = Date.now();
+            if (!force && now - state.lastSavedAt < 5000) return;
+            const t = Number(video.currentTime), d = Number(video.duration);
+            if (!Number.isFinite(t) || !Number.isFinite(d) || d < 10 || t < 5 || t > d + 1) return;
+            const completed = Boolean(video.ended || d - t <= Math.min(15, Math.max(1, d * 0.01)));
+            const entry = { time: Math.round(t * 10) / 10, duration: Math.round(d * 10) / 10,
+                completed, savedAt: now };
+            if (this.write(state.ctx.key, entry)) {
+                state.lastSavedAt = now;
+                if (state.ctx.playlistId) this.write(this.prefix + 'last:' + state.ctx.playlistId,
+                    { videoId: state.ctx.id, savedAt: now });
+            }
+        },
+        cleanup() {
+            if (!settings.resumeEnabled || Date.now() - this.lastSweep < 300000) return;
+            this.lastSweep = Date.now();
+            try {
+                const entries = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (!key?.startsWith(this.prefix)) continue;
+                    const item = this.read(key);
+                    if (!item || !Number.isFinite(item.savedAt) ||
+                        Date.now() - item.savedAt > 90 * 86400000) {
+                        localStorage.removeItem(key); i--; continue;
+                    }
+                    entries.push([key, item.savedAt]);
+                }
+                if (entries.length > 2000) {
+                    entries.sort((a, b) => a[1] - b[1]);
+                    for (const [key] of entries.slice(0, entries.length - 2000)) localStorage.removeItem(key);
+                }
+            } catch { /* restricted site storage; continue playback */ }
+        },
+        clearHistory() {
+            try {
+                for (let i = localStorage.length - 1; i >= 0; i--) {
+                    const key = localStorage.key(i);
+                    if (key?.startsWith(this.prefix)) localStorage.removeItem(key);
+                }
+                if (this.active) this.active.restored = true;
+                return true;
+            } catch { return false; }
+        }
+    };
     function stateFor(video) {
         if (!videoStates.has(video)) videoStates.set(video, {
             baseline: video.playbackRate, source: video.currentSrc || video.src || '',
@@ -925,6 +1097,7 @@
                     <button class="${APP}-action" data-action="screenshot">截圖 Alt+S</button>
                     <button class="${APP}-action" data-action="pip">子母畫面 Alt+P</button>
                     <button class="${APP}-action" data-action="reset-channel">清除頻道速度</button>
+                    <button class="${APP}-action" data-action="clear-resume">清除續播紀錄</button>
                     <button class="${APP}-action" data-action="reset-all">重設設定</button>
                 </div>
             </div>
@@ -1000,6 +1173,27 @@
                 })
             ),
             panelRow(
+                '自動續播（YouTube）',
+                '僅於 YouTube 儲存觀看時間；此站可讀取瀏覽器內的進度資料',
+                makeToggle(settings.resumeEnabled, value => {
+                    settings.resumeEnabled = value;
+                    saveSettings();
+                    if (value) {
+                        ResumeManager.attach(currentVideo);
+                        ResumeManager.tryRestore(currentVideo);
+                        ResumeManager.cleanup();
+                    } else ResumeManager.detach();
+                })
+            ),
+            panelRow(
+                '播放清單接續上一支',
+                '僅在沒有指定影片序號時嘗試，預設關閉',
+                makeToggle(settings.resumePlaylistJump, value => {
+                    settings.resumePlaylistJump = value;
+                    saveSettings();
+                })
+            ),
+            panelRow(
                 '廣告可跳過時自動略過',
                 '只點擊 YouTube 已提供的略過按鈕',
                 makeToggle(settings.autoSkipAds, value => {
@@ -1027,13 +1221,17 @@
 
         if (!isYouTube) {
             // 跨站控制只展示真正支援的功能，避免 FB 顯示 YouTube 專屬設定。
-            const youtubeOnly = ['每頻道記憶', 'SponsorBlock', '廣告可跳過時自動略過', '廣告期間自動靜音'];
+            const youtubeOnly = ['每頻道記憶', 'SponsorBlock', '自動續播（YouTube）', '播放清單接續上一支', '廣告可跳過時自動略過', '廣告期間自動靜音'];
             panel.querySelectorAll(`.${APP}-row`).forEach(row => {
                 if (youtubeOnly.some(label => row.textContent.includes(label))) row.remove();
             });
             panel.querySelector('[data-action="reset-channel"]')?.remove();
+            panel.querySelector('[data-action="clear-resume"]')?.remove();
         }
 
+        panel.querySelector('[data-action="clear-resume"]')?.addEventListener('click', () => {
+            showToast(ResumeManager.clearHistory() ? '續播紀錄已清除' : '無法清除續播紀錄', { force: true });
+        });
         panel.querySelector('[data-action="screenshot"]').addEventListener('click', takeScreenshot);
         panel.querySelector('[data-action="pip"]').addEventListener('click', togglePiP);
 
@@ -1057,6 +1255,7 @@
             numbers[0].value = settings.speed;
             numbers[1].value = settings.turboSpeed;
             const keys = { '每頻道記憶': 'rememberChannel', 'SponsorBlock': 'sponsorBlock',
+                '自動續播（YouTube）': 'resumeEnabled', '播放清單接續上一支': 'resumePlaylistJump',
                 '廣告可跳過時自動略過': 'autoSkipAds', '廣告期間自動靜音': 'muteAds', '提示訊息': 'showToasts' };
             panel.querySelectorAll(`.${APP}-row`).forEach(row => {
                 const key = keys[row.querySelector(`.${APP}-label-main`)?.textContent];
@@ -1388,22 +1587,45 @@
                 if (!locked || Math.abs(video.playbackRate - effectiveSpeed()) > 0.01) state.baseline = video.playbackRate;
                 // Media events never replenish the budget; only explicit user commands do.
             }
-            if (event.type === 'loadedmetadata') enforceRate();
+            if (event.type === 'loadedmetadata') {
+                enforceRate();
+                if (isYouTube) ResumeManager.tryRestore(video);
+            }
         };
-        const onTime = () => { if (isYouTube) checkSponsorSkip(); };
+        const onTime = () => {
+            if (isYouTube) {
+                ResumeManager.save(video);
+                checkSponsorSkip();
+            }
+        };
+        const onSeeking = () => { if (isYouTube) ResumeManager.onSeeking(video); };
+        const onPause = () => { if (isYouTube) ResumeManager.save(video, true); };
+        const onEnded = () => { if (isYouTube) ResumeManager.save(video, true); };
         video.addEventListener('timeupdate', onTime);
+        video.addEventListener('seeking', onSeeking);
+        video.addEventListener('pause', onPause);
+        video.addEventListener('ended', onEnded);
         video.addEventListener('ratechange', onRate);
         ['emptied', 'loadstart', 'loadedmetadata'].forEach(type => video.addEventListener(type, onMedia));
         unbindVideo = () => {
+            ResumeManager.detach();
             video.removeEventListener('timeupdate', onTime);
+            video.removeEventListener('seeking', onSeeking);
+            video.removeEventListener('pause', onPause);
+            video.removeEventListener('ended', onEnded);
             video.removeEventListener('ratechange', onRate);
             ['emptied', 'loadstart', 'loadedmetadata'].forEach(type => video.removeEventListener(type, onMedia));
         };
         restoreRememberedSpeed();
         enforceRate();
+        if (isYouTube) {
+            ResumeManager.attach(video);
+            ResumeManager.tryRestore(video);
+        }
     }
 
     function onNavigation() {
+        ResumeManager.detach();
         MediaCoordinator.invalidate();
         sponsorFetchToken++; // Reject responses from the prior route immediately.
         releaseTemporaryHold();
@@ -1416,6 +1638,7 @@
             navigationTimer = null;
             if (suspended) return;
             bindVideo(getVideo());
+            if (isYouTube) { ResumeManager.attach(currentVideo); ResumeManager.tryRestore(currentVideo); }
             ensureControlButton();
             restoreRememberedSpeed();
             if (isYouTube) fetchSponsorSegments();
@@ -1576,13 +1799,18 @@
         }
         refreshActiveVideo();
         enforceRate();
-        if (isYouTube) handleAdAssist();
+        if (isYouTube) {
+            handleAdAssist();
+            ResumeManager.tryRestore(currentVideo);
+            ResumeManager.cleanup();
+        }
     }
     let watchdog = setInterval(tick, 800);
 
     window.addEventListener('blur', releaseTemporaryHold);
     document.addEventListener('visibilitychange', () => { if (document.hidden) releaseTemporaryHold(); });
     window.addEventListener('pagehide', () => {
+        ResumeManager.detach();
         releaseTemporaryHold();
         bindVideo(null);
         suspended = true;
@@ -1598,6 +1826,7 @@
         observer.observe(document.documentElement, { childList: true, subtree: true });
         watchdog = setInterval(tick, 800);
         refreshActiveVideo();
+        if (isYouTube) { ResumeManager.attach(currentVideo); ResumeManager.tryRestore(currentVideo); }
     });
 
     window.addEventListener('resize', () => {
