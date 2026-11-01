@@ -16,7 +16,7 @@ function fixture(host = 'www.bilibili.com', path = '/video/BVfixture/') {
   vm.runInContext(source.slice(0, source.indexOf("    document.addEventListener('keydown'")) + `
     showToast = () => {}; updateControlUI = () => {}; renderPanelValues = () => {};
     globalThis.api = { getVideo, bindVideo, startHold, stopHold, toggleLock, setPreset, enforceRate,
-      ignoreInput, fetchSponsorSegments, releaseTemporaryHold, stateFor, coordinator: MediaCoordinator, resume: ResumeManager,
+      ignoreInput, fetchSponsorSegments, releaseTemporaryHold, stateFor, coordinator: MediaCoordinator, resume: ResumeManager, biliIdentity: getBilibiliSponsorIdentity, normalizeSponsorBucket,
       media: () => currentVideo, flags: () => ({locked, holdActive}),
       navigation: () => { currentVideoId = getVideoId(); }, defaults: () => settings };
   })();`, context);
@@ -33,7 +33,7 @@ function fixture(host = 'www.bilibili.com', path = '/video/BVfixture/') {
     videos.push(v); return v;
   };
   const drain = () => { let i = 0; while (jobs.length) { assert(++i < 50, 'finite timer work'); jobs.shift()(); } };
-  return { ...context.api, video, videos, location, requests, store, drain };
+  return { ...context.api, video, videos, location, requests, store, win: context.window, drain };
 }
 let checks = 0;
 const test = (name, fn) => { fn(); checks++; console.log(`PASS ${name}`); };
@@ -94,6 +94,27 @@ test('same-node source replacement cannot adopt our own locked rate as baseline'
  const f=fixture(); const a=f.video(1.25); f.bindVideo(a); f.setPreset(3);
  a.src=a.currentSrc='two.mp4'; a.emit('loadstart'); a.emit('loadedmetadata'); f.drain();
  f.toggleLock(); assert.equal(a.playbackRate,1.25);
+});
+test('Bilibili sponsor requires verified BV and CID for current p', () => {
+ const f=fixture('www.bilibili.com','/video/BV1abcdEFGH2/');
+ f.location.href='https://www.bilibili.com/video/BV1abcdEFGH2/?p=2';
+ f.win.__INITIAL_STATE__={videoData:{bvid:'BV1abcdEFGH2',pages:[{cid:101},{cid:202}]}};
+ assert.equal(f.biliIdentity().cid,'202');
+ f.location.href='https://www.bilibili.com/video/BV1abcdEFGH2/?p=3';
+ assert.equal(f.biliIdentity(),null);
+});
+test('Sponsor normalized bucket refuses wrong CID, invalid ranges and full labels', () => {
+ const f=fixture('www.bilibili.com');
+ const identity={platform:'bilibili',videoId:'BV1abcdEFGH2',cid:'202'};
+ const result=f.normalizeSponsorBucket([{videoID:identity.videoId,segments:[
+  {segment:[5,12],cid:'101',category:'sponsor',actionType:'skip',UUID:'bad-page'},
+  {segment:[15,22],cid:'202',category:'sponsor',actionType:'skip',UUID:'good'},
+  {segment:[0,1200],cid:'202',category:'sponsor',actionType:'skip'},
+  {segment:[0,120],cid:'202',category:'selfpromo',actionType:'full'}
+ ]}],identity,120);
+ assert.equal(result.segments.length,1);
+ assert.equal(result.segments[0].uuid,'good');
+ assert.equal(result.fullLabel,'selfpromo');
 });
 test('all non-YouTube adapters emit zero SponsorBlock requests', () => {
  for(const host of ['www.bilibili.com','www.facebook.com','www.instagram.com','www.threads.net']) { const f=fixture(host); f.video(); f.navigation(); f.fetchSponsorSegments(); assert.equal(f.requests.length,0); }
