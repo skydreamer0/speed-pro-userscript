@@ -1,6 +1,6 @@
 # 參與開發
 
-目前 1.2.0 為 Bilibili 適配候選，採用 [MIT 授權](LICENSE)。提交程式碼時請確認你有權以 MIT 授權貢獻；不要貼入不明來源、受限或含私人資料的程式碼。
+目前 2.0.0 為 Playback Suite 多模組整合候選，採用 [MIT 授權](LICENSE)。提交程式碼時請確認你有權以 MIT 授權貢獻；不要貼入不明來源、受限或含私人資料的程式碼。
 
 ## 回報問題
 
@@ -10,7 +10,7 @@
 
 ## 修改與檢查
 
-1. 以小範圍分支修改 `speed-pro.user.js`，避免把格式重排和功能變更混在同一 PR。
+1. 以堆疊 Draft PR 分模組修改 `speed-pro.user.js`，避免把格式重排和功能變更混在同一 PR。
 2. 先說明要修復的行為，補上適當回歸測試；沒有做過的瀏覽器測試明列「未測」。
 3. 執行 `npm test`，依 [測試計畫](docs/TESTING.md) 記錄適用的手動結果。
 4. 版本變更需同步 `@version`、`package.json`、README 與 CHANGELOG；metadata 權限擴張需解釋用途與隱私影響。

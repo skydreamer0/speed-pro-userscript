@@ -11,7 +11,7 @@ async function fixture(host) {
  <div class="ytp-right-controls"></div><div class="bpx-player-video-wrap"><video id="main" class="html5-main-video" style="width:640px;height:360px"></video></div>
  <video id="preview" style="width:700px;height:400px"></video><input id="danmaku"><textarea></textarea><button id="native">Native</button><div contenteditable id="comment"></div>
  </body></html>`}));
- await page.goto(`https://${host}/video/BVfixture/?p=1`);
+ await page.goto(`https://${host}/video/BV1abcdEFGH2/?p=1`);
  await page.evaluate(()=>{window.requests=[];window.GM_xmlhttpRequest=x=>window.requests.push(x.url); document.querySelector('#main').playbackRate=1.25;});
  await page.addScriptTag({content:source}); return page;
 }
@@ -43,7 +43,7 @@ try {
  await p.waitForTimeout(250); assert.equal(await p.locator('#replacement').evaluate(v=>v.playbackRate),2); assert.equal(await p.locator('#preview').evaluate(v=>v.playbackRate),1);
  await p.click('#yt-speed-pro-button'); assert.equal(await p.locator('#replacement').evaluate(v=>v.playbackRate),1.5);
  await key(p,'Backquote'); await p.evaluate(()=>document.querySelector('#replacement').dispatchEvent(new Event('loadstart'))); assert.equal(await p.locator('#replacement').evaluate(v=>v.playbackRate),1.5);
- await p.evaluate(()=>history.pushState({},'', '/video/BVfixture/?p=2')); await p.waitForTimeout(900);
+ await p.evaluate(()=>history.pushState({},'', '/video/BV1abcdEFGH2/?p=2')); await p.waitForTimeout(900);
  await key(p,'Digit2','body',{altKey:true});
  await p.evaluate(()=>history.pushState({},'', '/bangumi/play/ep1')); assert.equal(await key(p,'PageUp'),false); await p.waitForTimeout(900); assert.equal(await p.locator('#replacement').evaluate(v=>v.playbackRate),1.5);
  assert.equal(await p.evaluate(()=>requests.length),0); checks++; console.log('PASS Bilibili native keys, input, blur/focus release, replacement, media reload, part navigation and route exit');

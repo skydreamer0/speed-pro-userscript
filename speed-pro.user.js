@@ -1,13 +1,14 @@
 // ==UserScript==
-// @name         Speed Pro - YouTube / Facebook / Instagram / Threads
-// @name:zh-TW   Speed Pro｜YouTube、FB Reels、IG 倍速工具
+// @name         Playback Suite - Cross-platform Video Companion
+// @name:zh-TW   Playback Suite｜跨站影片播放助手
 // @namespace    george.youtube.speedpro
-// @version      1.2.0
+// @version      2.0.0
 // @updateURL    https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @downloadURL  https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @license      MIT
-// @description  Bilibili / 跨平台影片倍速：FB/IG/Threads 浮動控制、YouTube 控制列、快捷鍵、SponsorBlock (YouTube)、PiP
+// @description  Speed controls, opt-in YouTube resume, YouTube SponsorBlock, Bilibili speed controls, YouTube ad assist, PiP and screenshots.
 // @match        https://www.bilibili.com/video/*
+// @match        https://www.bilibili.com/zh-Hant/video/*
 // @match        https://www.youtube.com/*
 // @match https://www.instagram.com/*
 // @match        https://www.facebook.com/*
@@ -18,6 +19,7 @@
 // @match https://www.threads.net/*
 // @grant        GM_xmlhttpRequest
 // @connect      sponsor.ajay.app
+// @connect      bsbsb.top
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -27,7 +29,36 @@
     const APP = 'yt-speed-pro';
     const isYouTube = /(^|\.)youtube\.com$/.test(location.hostname);
     const isBilibili = location.hostname === 'www.bilibili.com';
-    const inScope = () => !isBilibili || /^\/video\/[^/]+/.test(location.pathname);
+    // One narrow route parser; a route identity is NOT proof of the active media CID.
+    function parseBilibiliRoute(href = location.href) {
+        try {
+            const url = new URL(href);
+            if (url.protocol !== 'https:' || url.hostname !== 'www.bilibili.com' ||
+                url.port || url.username || url.password) return null;
+            const match = url.pathname.match(/^\/(?:zh-Hant\/)?video\/(BV[0-9A-Za-z]{10})\/?$/);
+            if (!match) return null;
+            const pages = url.searchParams.getAll('p');
+            const rawPages = url.search.slice(1).split('&').filter(part => /^p(?:=|$)/.test(part));
+            if (pages.length > 1 || (pages.length && (rawPages.length !== 1 ||
+                !/^p=[1-9][0-9]{0,3}$/.test(rawPages[0])))) return null;
+            const page = pages.length ? Number(pages[0]) : 1;
+            if (!Number.isSafeInteger(page) || page < 1 || page > 1000) return null;
+            return { bvid: match[1], page, routeKey: match[1] + ':' + page };
+        } catch { return null; }
+    }
+    const inScope = () => !isBilibili || Boolean(parseBilibiliRoute());
+    function mediaRouteKey() {
+        if (isBilibili) return parseBilibiliRoute()?.routeKey || null;
+        if (isYouTube) {
+            try {
+                const url = new URL(location.href);
+                const id = url.searchParams.get('v');
+                return url.pathname === '/watch' && /^[A-Za-z0-9_-]{11}$/.test(id || '') ? id : null;
+            } catch { return null; }
+        }
+        return location.href;
+    }
+    const mediaSource = video => video?.currentSrc || video?.src || '';
     const STORAGE_KEY = `${APP}:settings`;
     const CHANNEL_KEY = `${APP}:channels`;
 
@@ -38,6 +69,11 @@
         rememberGlobal: true,
         rememberChannel: true,
         sponsorBlock: true,
+        resumeEnabled: false,
+        resumePlaylistJump: false,
+        bilibiliSponsorBlock: false,
+        showSponsorMarkers: false,
+        cosmeticAdFiltering: false,
         sponsorCategories: ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro', 'preview', 'music_offtopic', 'filler'],
         autoSkipAds: true,
         muteAds: true,
@@ -58,11 +94,14 @@
     let turboActive = false;
 
     let sponsorSegments = [];
+    let sponsorFullLabel = null;
+    let sponsorContext = null;
     let sponsorFetchToken = 0;
     let lastSponsorSkip = null;
 
-    let adWasMuted = false;
-    let volumeBeforeAd = null;
+    let adMuteState = null;
+    let lastAdSkipAt = 0;
+    let lastAdSkipButton = null;
 
     let controlButton = null;
     let floatControls = null;
@@ -72,6 +111,232 @@
     let rateTimer = null;
     let navigationTimer = null;
     let suspended = false;
+    // Single, generation-scoped media seek gate shared by future resume and sponsor modules.
+    // All feature-owned currentTime writes must pass through this gate.
+    const MediaCoordinator = {
+        generation: 0,
+        ready: false,
+        source: '',
+        routeKey: null,
+        invalidate() {
+            this.generation++;
+            sponsorFetchToken++;
+            sponsorSegments = [];
+            sponsorFullLabel = null;
+            sponsorContext = null;
+            lastSponsorSkip = null;
+            clearSponsorVisuals();
+        },
+        bind(video) {
+            this.source = mediaSource(video);
+            this.routeKey = mediaRouteKey();
+            this.ready = Boolean(video && this.source && video.readyState >= 1);
+        },
+        metadata(video) {
+            const source = mediaSource(video);
+            const routeKey = mediaRouteKey();
+            // A changed URL with the old source cannot establish a new media identity.
+            this.ready = Boolean(source && video.readyState >= 1 &&
+                (source !== this.source || routeKey === this.routeKey));
+            if (this.ready) { this.source = source; this.routeKey = routeKey; }
+        },
+        snapshot() {
+            return { generation: this.generation, video: currentVideo, url: location.href,
+                source: mediaSource(currentVideo), routeKey: mediaRouteKey() };
+        },
+        isCurrent(token) {
+            return Boolean(token && this.ready && !suspended && inScope() && token.video &&
+                token.video === currentVideo && token.generation === this.generation &&
+                token.url === location.href && token.source && token.source === this.source &&
+                token.source === mediaSource(currentVideo) && token.routeKey === this.routeKey &&
+                token.routeKey === mediaRouteKey());
+        },
+        seek(token, time) {
+            if (!this.isCurrent(token) || !Number.isFinite(time) || time < 0) return false;
+            const video = token.video;
+            if (Number.isFinite(video.duration) && time > video.duration + 1) return false;
+            // Sponsor / resume must never seek the content while an ad player is active.
+            if (isYouTube && document.querySelector('#movie_player')?.classList?.contains('ad-showing')) return false;
+            try {
+                video.currentTime = time;
+                return Math.abs(video.currentTime - time) <= 2;
+            } catch { return false; }
+        }
+    };
+
+    // Opt-in YouTube checkpoints; intentionally no copied YouTube Helper API or extra GM grants.
+    // Same-origin localStorage is visible to site JavaScript. See the integration SPEC.
+    const ResumeManager = {
+        prefix: APP + ':resume:v1:',
+        active: null,
+        lastSweep: 0,
+        lastErrorShown: false,
+        context() {
+            if (!isYouTube) return null;
+            try {
+                const url = new URL(location.href);
+                if (url.pathname !== '/watch') return null;
+                const id = url.searchParams.get('v');
+                if (!/^[A-Za-z0-9_-]{11}$/.test(id || '')) return null;
+                const candidate = url.searchParams.get('list');
+                const playlistId = candidate && candidate !== 'WL' && /^[A-Za-z0-9_-]{1,120}$/.test(candidate) ? candidate : null;
+                return {
+                    id, playlistId,
+                    key: this.keyFor(id, playlistId),
+                    explicitTime: ['t', 'start', 'time_continue'].some(key => url.searchParams.has(key)),
+                    explicitIndex: url.searchParams.has('index')
+                };
+            } catch { return null; }
+        },
+        keyFor(id, playlistId = null) {
+            return this.prefix + 'progress:' + (playlistId ? 'list:' + playlistId : 'standalone') + ':' + id;
+        },
+        read(key) {
+            try {
+                const value = localStorage.getItem(key);
+                if (!value) return null;
+                const parsed = JSON.parse(value);
+                return parsed && typeof parsed === 'object' ? parsed : null;
+            } catch { return null; }
+        },
+        write(key, value) {
+            try {
+                const previous = this.read(key);
+                if (previous && Number(previous.savedAt) > value.savedAt) return false;
+                localStorage.setItem(key, JSON.stringify(value));
+                return true;
+            } catch {
+                if (!this.lastErrorShown) {
+                    this.lastErrorShown = true;
+                    showToast('無法儲存續播進度：瀏覽器儲存空間不可用', { force: true });
+                }
+                return false;
+            }
+        },
+        attach(video) {
+            const ctx = this.context();
+            const token = MediaCoordinator.snapshot();
+            if (!settings.resumeEnabled || !video || !ctx || !MediaCoordinator.isCurrent(token)) {
+                this.active = null;
+                return;
+            }
+            if (this.active?.video === video && this.active.ctx.key === ctx.key &&
+                MediaCoordinator.isCurrent(this.active.token)) return;
+            this.active = {
+                video, ctx, token, restored: false, userSeeked: false, lastSavedAt: 0,
+                startedAt: Date.now(), ignoreOwnSeekUntil: 0
+            };
+        },
+        detach() {
+            this.save(this.active?.video, true);
+            this.active = null;
+        },
+        onSeeking(video) {
+            const state = this.active;
+            if (!state || state.video !== video || Date.now() < state.ignoreOwnSeekUntil) return;
+            // Explicit user/native player seeks must win over our initial restore.
+            if (video.currentTime > 1 || state.ctx.explicitTime) state.userSeeked = true;
+        },
+        isAd() {
+            return Boolean(document.querySelector('#movie_player')?.classList?.contains('ad-showing'));
+        },
+        maybeJumpPlaylist(state) {
+            if (!settings.resumePlaylistJump || !state.ctx.playlistId || state.ctx.explicitIndex) return false;
+            const last = this.read(this.prefix + 'last:' + state.ctx.playlistId);
+            if (!last || last.videoId === state.ctx.id) return false;
+            const player = document.querySelector('#movie_player');
+            const list = player?.getPlaylist?.();
+            const index = Array.isArray(list) ? list.indexOf(last.videoId) : -1;
+            if (index < 0 || typeof player?.playVideoAt !== 'function') return false;
+            try { player.playVideoAt(index); return true; } catch { return false; }
+        },
+        tryRestore(video) {
+            const state = this.active;
+            if (!settings.resumeEnabled || !state || !video || state.video !== video ||
+                state.restored || state.userSeeked || !MediaCoordinator.isCurrent(state.token)) return false;
+            const ctx = this.context();
+            if (!ctx || ctx.key !== state.ctx.key) return false;
+            if (ctx.explicitTime || Date.now() - state.startedAt > 30000) {
+                state.restored = true;
+                return false;
+            }
+            if (this.isAd()) return false;
+            const duration = Number(video.duration);
+            if (!Number.isFinite(duration) || duration < 10 || video.readyState < 1) return false;
+            // If YouTube has already selected an actual position, preserve it.
+            if (video.currentTime > 3 || video.seeking) {
+                state.restored = true;
+                return false;
+            }
+            if (this.maybeJumpPlaylist(state)) {
+                state.restored = true;
+                return true;
+            }
+            const saved = this.read(ctx.key);
+            const endMargin = Math.min(duration / 2, Math.max(15, duration * 0.01));
+            if (!saved || saved.completed || !Number.isFinite(saved.time) || !Number.isFinite(saved.duration) ||
+                saved.time < 5 || saved.time >= duration - endMargin ||
+                Date.now() - saved.savedAt > 90 * 86400000 ||
+                Math.abs(saved.duration - duration) > Math.max(3, duration * 0.05)) {
+                state.restored = true;
+                return false;
+            }
+            state.ignoreOwnSeekUntil = Date.now() + 1500;
+            const ok = MediaCoordinator.seek(state.token, saved.time);
+            if (!ok) { state.ignoreOwnSeekUntil = 0; return false; }
+            state.restored = true;
+            showToast('已接續上次播放進度');
+            return true;
+        },
+        save(video, force = false) {
+            const state = this.active;
+            if (!settings.resumeEnabled || !state || !video || state.video !== video || this.isAd()) return;
+            if (this.context()?.key !== state.ctx.key || !MediaCoordinator.isCurrent(state.token)) return;
+            const now = Date.now();
+            if (!force && now - state.lastSavedAt < 5000) return;
+            const t = Number(video.currentTime), d = Number(video.duration);
+            if (!Number.isFinite(t) || !Number.isFinite(d) || d < 10 || t < 5 || t > d + 1) return;
+            const completed = Boolean(video.ended || d - t <= Math.min(d / 2, Math.max(15, d * 0.01)));
+            const entry = { time: Math.round(t * 10) / 10, duration: Math.round(d * 10) / 10,
+                completed, savedAt: now };
+            if (this.write(state.ctx.key, entry)) {
+                state.lastSavedAt = now;
+                if (state.ctx.playlistId) this.write(this.prefix + 'last:' + state.ctx.playlistId,
+                    { videoId: state.ctx.id, savedAt: now });
+            }
+        },
+        cleanup() {
+            if (!settings.resumeEnabled || Date.now() - this.lastSweep < 300000) return;
+            this.lastSweep = Date.now();
+            try {
+                const entries = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (!key?.startsWith(this.prefix)) continue;
+                    const item = this.read(key);
+                    if (!item || !Number.isFinite(item.savedAt) ||
+                        Date.now() - item.savedAt > 90 * 86400000) {
+                        localStorage.removeItem(key); i--; continue;
+                    }
+                    entries.push([key, item.savedAt]);
+                }
+                if (entries.length > 2000) {
+                    entries.sort((a, b) => a[1] - b[1]);
+                    for (const [key] of entries.slice(0, entries.length - 2000)) localStorage.removeItem(key);
+                }
+            } catch { /* restricted site storage; continue playback */ }
+        },
+        clearHistory() {
+            try {
+                for (let i = localStorage.length - 1; i >= 0; i--) {
+                    const key = localStorage.key(i);
+                    if (key?.startsWith(this.prefix)) localStorage.removeItem(key);
+                }
+                if (this.active) this.active.restored = true;
+                return true;
+            } catch { return false; }
+        }
+    };
     function stateFor(video) {
         if (!videoStates.has(video)) videoStates.set(video, {
             baseline: video.playbackRate, source: video.currentSrc || video.src || '',
@@ -738,7 +1003,7 @@
             controlButton = document.createElement('button');
             controlButton.id = `${APP}-button`;
             controlButton.type = 'button';
-            controlButton.title = 'Speed Pro 設定';
+            controlButton.title = 'Playback Suite 設定';
             controlButton.addEventListener('click', event => {
                 event.stopPropagation();
                 togglePanel();
@@ -776,8 +1041,8 @@
         settingButton.type = 'button';
         settingButton.id = `${APP}-settings-button`;
         settingButton.textContent = '⚙';
-        settingButton.title = '開啟 Speed Pro 設定';
-        settingButton.setAttribute('aria-label', '開啟 Speed Pro 設定');
+        settingButton.title = '開啟 Playback Suite 設定';
+        settingButton.setAttribute('aria-label', '開啟 Playback Suite 設定');
         settingButton.addEventListener('click', event => {
             event.stopPropagation();
             togglePanel();
@@ -863,8 +1128,8 @@
         panel.innerHTML = `
             <div class="${APP}-header">
                 <div>
-                    <div class="${APP}-title">Speed Pro</div>
-                    <div class="${APP}-sub">速度、跳段與播放工具</div>
+                    <div class="${APP}-title">Playback Suite</div>
+                    <div class="${APP}-sub">倍速、續播、跳段與播放工具</div>
                 </div>
                 <button class="${APP}-close" type="button">×</button>
             </div>
@@ -895,6 +1160,7 @@
                     <button class="${APP}-action" data-action="screenshot">截圖 Alt+S</button>
                     <button class="${APP}-action" data-action="pip">子母畫面 Alt+P</button>
                     <button class="${APP}-action" data-action="reset-channel">清除頻道速度</button>
+                    <button class="${APP}-action" data-action="clear-resume">清除續播紀錄</button>
                     <button class="${APP}-action" data-action="reset-all">重設設定</button>
                 </div>
             </div>
@@ -966,7 +1232,47 @@
                     settings.sponsorBlock = value;
                     saveSettings();
                     if (value) fetchSponsorSegments();
-                    else sponsorSegments = [];
+                    else { sponsorFetchToken++; sponsorSegments = []; sponsorFullLabel = null; clearSponsorVisuals(); }
+                })
+            ),
+            panelRow(
+                'Bilibili 贊助片段',
+                '目前不可用：尚無經真站驗證的媒體 CID adapter；不會請求或跳過片段',
+                makeToggle(settings.bilibiliSponsorBlock, value => {
+                    settings.bilibiliSponsorBlock = value;
+                    saveSettings();
+                    if (value) showToast('Bilibili 贊助片段目前不可用；倍速功能不受影響', { force: true });
+                    sponsorFetchToken++; sponsorSegments = []; sponsorFullLabel = null; sponsorContext = null; clearSponsorVisuals();
+                })
+            ),
+            panelRow(
+                '贊助進度條標記',
+                '在辨識的播放器進度條顯示片段顏色',
+                makeToggle(settings.showSponsorMarkers, value => {
+                    settings.showSponsorMarkers = value;
+                    saveSettings();
+                    renderSponsorVisuals();
+                })
+            ),
+            panelRow(
+                '自動續播（YouTube）',
+                '僅於 YouTube 儲存觀看時間；此站可讀取瀏覽器內的進度資料',
+                makeToggle(settings.resumeEnabled, value => {
+                    settings.resumeEnabled = value;
+                    saveSettings();
+                    if (value) {
+                        ResumeManager.attach(currentVideo);
+                        ResumeManager.tryRestore(currentVideo);
+                        ResumeManager.cleanup();
+                    } else ResumeManager.detach();
+                })
+            ),
+            panelRow(
+                '播放清單接續上一支',
+                '僅在沒有指定影片序號時嘗試，預設關閉',
+                makeToggle(settings.resumePlaylistJump, value => {
+                    settings.resumePlaylistJump = value;
+                    saveSettings();
                 })
             ),
             panelRow(
@@ -986,6 +1292,15 @@
                 })
             ),
             panelRow(
+                '隱藏 YouTube 靜態廣告',
+                '只隱藏已辨識的頁面廣告元素，不會強制快轉或自動播放',
+                makeToggle(settings.cosmeticAdFiltering, value => {
+                    settings.cosmeticAdFiltering = value;
+                    saveSettings();
+                    applyCosmeticAdFiltering();
+                })
+            ),
+            panelRow(
                 '提示訊息',
                 '顯示速度與跳段提示',
                 makeToggle(settings.showToasts, value => {
@@ -997,13 +1312,28 @@
 
         if (!isYouTube) {
             // 跨站控制只展示真正支援的功能，避免 FB 顯示 YouTube 專屬設定。
-            const youtubeOnly = ['每頻道記憶', 'SponsorBlock', '廣告可跳過時自動略過', '廣告期間自動靜音'];
+            const youtubeOnly = ['隱藏 YouTube 靜態廣告', '每頻道記憶', 'SponsorBlock', '自動續播（YouTube）', '播放清單接續上一支', '廣告可跳過時自動略過', '廣告期間自動靜音'];
             panel.querySelectorAll(`.${APP}-row`).forEach(row => {
                 if (youtubeOnly.some(label => row.textContent.includes(label))) row.remove();
             });
             panel.querySelector('[data-action="reset-channel"]')?.remove();
+            panel.querySelector('[data-action="clear-resume"]')?.remove();
+            if (!isBilibili) {
+                const bilingualOnly = ['Bilibili 贊助片段', '贊助進度條標記'];
+                panel.querySelectorAll(`.${APP}-row`).forEach(row => {
+                    if (bilingualOnly.some(label => row.textContent.includes(label))) row.remove();
+                });
+            }
         }
 
+        if (isYouTube) {
+            panel.querySelectorAll(`.${APP}-row`).forEach(row => {
+                if (row.textContent.includes('Bilibili 贊助片段')) row.remove();
+            });
+        }
+        panel.querySelector('[data-action="clear-resume"]')?.addEventListener('click', () => {
+            showToast(ResumeManager.clearHistory() ? '續播紀錄已清除' : '無法清除續播紀錄', { force: true });
+        });
         panel.querySelector('[data-action="screenshot"]').addEventListener('click', takeScreenshot);
         panel.querySelector('[data-action="pip"]').addEventListener('click', togglePiP);
 
@@ -1027,6 +1357,9 @@
             numbers[0].value = settings.speed;
             numbers[1].value = settings.turboSpeed;
             const keys = { '每頻道記憶': 'rememberChannel', 'SponsorBlock': 'sponsorBlock',
+                '自動續播（YouTube）': 'resumeEnabled', '播放清單接續上一支': 'resumePlaylistJump',
+                'Bilibili 贊助片段': 'bilibiliSponsorBlock', '贊助進度條標記': 'showSponsorMarkers',
+                '隱藏 YouTube 靜態廣告': 'cosmeticAdFiltering',
                 '廣告可跳過時自動略過': 'autoSkipAds', '廣告期間自動靜音': 'muteAds', '提示訊息': 'showToasts' };
             panel.querySelectorAll(`.${APP}-row`).forEach(row => {
                 const key = keys[row.querySelector(`.${APP}-label-main`)?.textContent];
@@ -1035,6 +1368,8 @@
             });
             renderPanelValues();
             updateControlUI();
+            restoreAdMute();
+            applyCosmeticAdFiltering();
             showToast('設定已重設', { force: true });
         });
 
@@ -1197,51 +1532,170 @@
         });
     }
 
+
+    // No verified active-media CID adapter is available yet. INITIAL_STATE pages,
+    // URL p and a player-global CID can all lead/lag the actual video during SPA.
+    // Keep all Bilibili sponsor requests, markers and seeks disabled rather than
+    // treating a route-only CID as media-confirmed. Speed controls remain available.
+    function getBilibiliSponsorIdentity() {
+        return null;
+    }
+
+    function sponsorIdentity() {
+        if (isBilibili) return settings.bilibiliSponsorBlock ? getBilibiliSponsorIdentity() : null;
+        if (!isYouTube || !settings.sponsorBlock ||
+            !MediaCoordinator.isCurrent(MediaCoordinator.snapshot())) return null;
+        const id = getVideoId();
+        return /^[A-Za-z0-9_-]{11}$/.test(id || '') ? { platform: 'youtube', videoId: id } : null;
+    }
+
+    async function sponsorHashPrefix(id) {
+        if (!crypto?.subtle) return null;
+        const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(id));
+        return Array.from(new Uint8Array(hash).slice(0, 2)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+    }
+
+    function normalizeSponsorBucket(bucket, identity, duration) {
+        if (!identity || !Array.isArray(bucket) || !Number.isFinite(duration) || duration <= 0) {
+            return { segments: [], fullLabel: null };
+        }
+        const record = bucket.find(entry => entry?.videoID === identity.videoId);
+        if (!record || !Array.isArray(record.segments)) return { segments: [], fullLabel: null };
+        const allowed = identity.platform === 'bilibili'
+            ? new Set(['sponsor', 'selfpromo', 'exclusive_access', 'interaction', 'outro'])
+            : new Set(settings.sponsorCategories.filter(c => c !== 'music_offtopic'));
+        const accepted = [];
+        let fullLabel = null;
+        for (const segment of record.segments.slice(0, 300)) {
+            if (!Array.isArray(segment?.segment) || segment.segment.length !== 2) continue;
+            const start = Number(segment.segment[0]), end = Number(segment.segment[1]);
+            if (!Number.isFinite(start) || !Number.isFinite(end) ||
+                start < 0 || start >= end || end > duration + 2 ||
+                !allowed.has(segment.category)) continue;
+            if (identity.platform === 'bilibili') {
+                if (String(segment.cid) !== identity.cid) continue;
+                // API unknown duration (0), missing and malformed values cannot auto-skip.
+                if (typeof segment.videoDuration !== 'number' || !Number.isFinite(segment.videoDuration) ||
+                    segment.videoDuration <= 0 || Math.abs(segment.videoDuration - duration) > 2) continue;
+            }
+            if (segment.actionType === 'full') {
+                fullLabel = segment.category;
+                continue;
+            }
+            if (segment.actionType !== 'skip') continue;
+            accepted.push({ start, end, category: segment.category, uuid: String(segment.UUID || '') });
+        }
+        accepted.sort((a, b) => a.start - b.start || a.end - b.end);
+        return { segments: accepted.slice(0, 150), fullLabel };
+    }
+
+    function clearSponsorVisuals() {
+        document.getElementById(APP + '-sponsor-markers')?.remove();
+        document.getElementById(APP + '-sponsor-label')?.remove();
+    }
+
+    function sponsorContextIsCurrent(context = sponsorContext) {
+        if (!context || !MediaCoordinator.isCurrent(context.token)) return false;
+        const identity = sponsorIdentity();
+        return Boolean(identity && identity.platform === context.identity.platform &&
+            identity.videoId === context.identity.videoId && identity.cid === context.identity.cid &&
+            Number(currentVideo?.duration) === context.duration);
+    }
+
+    function renderSponsorVisuals() {
+        if (!sponsorContextIsCurrent()) { clearSponsorVisuals(); return; }
+        const enabled = isBilibili ? settings.bilibiliSponsorBlock : settings.sponsorBlock;
+        const video = getVideo();
+        const duration = Number(video?.duration);
+        const bar = isBilibili
+            ? document.querySelector('.bpx-player-progress-wrap, .bpx-player-progress')
+            : document.querySelector('.ytp-progress-bar');
+        const old = document.getElementById(APP + '-sponsor-markers');
+        if (!enabled || !settings.showSponsorMarkers || !bar ||
+            !Number.isFinite(duration) || duration <= 0 || !sponsorSegments.length) {
+            old?.remove();
+        } else {
+            // The site controls its progress bar layout. Fail closed on unknown positioning.
+            const positioned = window.getComputedStyle?.(bar)?.position;
+            if (positioned && positioned !== 'static') {
+                const stamp = sponsorSegments.length + ':' + Math.floor(duration);
+                if (!old || old.parentElement !== bar || old.dataset.stamp !== stamp) {
+                    old?.remove();
+                    const overlay = document.createElement('div');
+                    overlay.id = APP + '-sponsor-markers';
+                    overlay.dataset.stamp = stamp;
+                    overlay.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:40;';
+                    const colors = {
+                        sponsor: '#00d400', selfpromo: '#e4db20', exclusive_access: '#008a5c',
+                        interaction: '#bb20ee', intro: '#33bbcc', outro: '#2244dd',
+                        preview: '#65b8ec', filler: '#999999'
+                    };
+                    for (const item of sponsorSegments) {
+                        const start = Math.max(0, Math.min(100, item.start / duration * 100));
+                        const end = Math.max(start, Math.min(100, item.end / duration * 100));
+                        const mark = document.createElement('span');
+                        mark.title = sponsorLabel(item.category);
+                        mark.style.cssText = 'position:absolute;top:0;height:100%;opacity:.75;';
+                        mark.style.left = start + '%';
+                        mark.style.width = (end - start) + '%';
+                        mark.style.backgroundColor = colors[item.category] || '#aaa';
+                        overlay.appendChild(mark);
+                    }
+                    bar.appendChild(overlay);
+                }
+            }
+        }
+        const oldLabel = document.getElementById(APP + '-sponsor-label');
+        if (!enabled || !sponsorFullLabel) { oldLabel?.remove(); return; }
+        const title = isBilibili ? document.querySelector('.video-title')
+            : document.querySelector('ytd-watch-metadata #title h1');
+        if (!title) return;
+        if (oldLabel && oldLabel.parentElement === title) return;
+        oldLabel?.remove();
+        const label = document.createElement('span');
+        label.id = APP + '-sponsor-label';
+        label.textContent = sponsorLabel(sponsorFullLabel);
+        label.style.cssText = 'display:inline-block;margin-left:8px;padding:2px 6px;border-radius:4px;background:#245b43;color:#fff;font:500 11px sans-serif;';
+        title.appendChild(label);
+    }
+
     async function fetchSponsorSegments() {
-        if (!isYouTube || !settings.sponsorBlock) {
-            sponsorSegments = [];
-            return;
-        }
-
-        const videoId = getVideoId();
-        if (!videoId) {
-            sponsorSegments = [];
-            return;
-        }
-
+        const identity = sponsorIdentity();
         const token = ++sponsorFetchToken;
-        currentVideoId = videoId;
-
+        sponsorSegments = [];
+        sponsorFullLabel = null;
+        sponsorContext = null;
+        clearSponsorVisuals();
+        if (!identity || !inScope()) return;
+        const context = { identity, token: MediaCoordinator.snapshot(), duration: Number(currentVideo?.duration) };
+        if (!sponsorContextIsCurrent(context)) return;
+        const requestUrl = location.href;
         try {
-            const categories = encodeURIComponent(JSON.stringify(settings.sponsorCategories));
-            const url = `https://sponsor.ajay.app/api/skipSegments?videoID=${encodeURIComponent(videoId)}&categories=${categories}`;
+            const prefix = await sponsorHashPrefix(identity.videoId);
+            if (!prefix || token !== sponsorFetchToken || location.href !== requestUrl || !sponsorContextIsCurrent(context)) return;
+            const categories = identity.platform === 'bilibili'
+                ? ['sponsor', 'selfpromo', 'exclusive_access', 'interaction', 'outro']
+                : settings.sponsorCategories.filter(c => c !== 'music_offtopic');
+            const base = identity.platform === 'bilibili' ? 'https://bsbsb.top' : 'https://sponsor.ajay.app';
+            const url = base + '/api/skipSegments/' + prefix +
+                '?categories=' + encodeURIComponent(JSON.stringify(categories)) +
+                '&actionTypes=' + encodeURIComponent(JSON.stringify(['skip', 'full']));
             const response = await gmGet(url);
-
-            if (token !== sponsorFetchToken) return;
-
-            if (response.status === 404) {
-                sponsorSegments = [];
-                return;
-            }
-
-            if (response.status < 200 || response.status >= 300) {
-                sponsorSegments = [];
-                return;
-            }
-
-            const data = JSON.parse(response.responseText);
-            sponsorSegments = Array.isArray(data)
-                ? data
-                    .filter(item => Array.isArray(item.segment) && item.segment.length === 2)
-                    .map(item => ({
-                        start: Number(item.segment[0]),
-                        end: Number(item.segment[1]),
-                        category: item.category || 'segment',
-                        uuid: item.UUID || ''
-                    }))
-                : [];
+            if (token !== sponsorFetchToken || location.href !== requestUrl ||
+                !sponsorContextIsCurrent(context) || response.status < 200 || response.status >= 300) return;
+            const parsed = JSON.parse(response.responseText);
+            const result = normalizeSponsorBucket(parsed, identity, context.duration);
+            if (token !== sponsorFetchToken || location.href !== requestUrl || !sponsorContextIsCurrent(context)) return;
+            sponsorContext = context;
+            sponsorSegments = result.segments;
+            sponsorFullLabel = result.fullLabel;
+            renderSponsorVisuals();
         } catch {
-            sponsorSegments = [];
+            if (token === sponsorFetchToken) {
+                sponsorSegments = [];
+                sponsorFullLabel = null;
+                clearSponsorVisuals();
+            }
         }
     }
 
@@ -1254,28 +1708,37 @@
             outro: '片尾',
             preview: '預告',
             music_offtopic: '非音樂內容',
-            filler: '填充內容'
+            filler: '填充內容',
+            exclusive_access: '限定內容'
         };
         return labels[category] || category;
     }
 
     function checkSponsorSkip() {
-        if (!settings.sponsorBlock || !currentVideo || sponsorSegments.length === 0) return;
+        if (!(isBilibili ? settings.bilibiliSponsorBlock : settings.sponsorBlock) || !currentVideo || sponsorSegments.length === 0 || !sponsorContextIsCurrent()) return;
 
         const t = currentVideo.currentTime;
+        // Undo exempts this entire segment for the current pass, not just two seconds.
+        // Leaving its interval (including seeking before it) starts a later replay pass.
+        if (lastSponsorSkip?.exempt && (t < lastSponsorSkip.start - 0.08 || t >= lastSponsorSkip.end)) {
+            lastSponsorSkip = null;
+        }
 
         const segment = sponsorSegments.find(seg =>
             t >= seg.start &&
             t < seg.end - 0.08 &&
-            (!lastSponsorSkip || lastSponsorSkip.uuid !== seg.uuid || Math.abs(t - lastSponsorSkip.at) > 2)
+            (!lastSponsorSkip || lastSponsorSkip.segment !== seg ||
+                (!lastSponsorSkip.exempt && Math.abs(t - lastSponsorSkip.at) > 2))
         );
 
         if (!segment) return;
 
         const from = t;
-        currentVideo.currentTime = segment.end + 0.03;
+        const token = sponsorContext.token;
+        if (!MediaCoordinator.seek(token, segment.end + 0.03)) return;
 
         lastSponsorSkip = {
+            segment, exempt: false,
             uuid: segment.uuid,
             start: segment.start,
             end: segment.end,
@@ -1288,42 +1751,100 @@
             duration: 3200,
             actionText: '返回',
             onAction: () => {
-                if (currentVideo) {
-                    currentVideo.currentTime = Math.max(segment.start, from);
+                if (!sponsorContextIsCurrent() || sponsorContext.token !== token) return;
+                if (MediaCoordinator.seek(token, Math.max(segment.start, from))) {
+                    lastSponsorSkip = { segment, exempt: true, uuid: segment.uuid,
+                        start: segment.start, end: segment.end, at: from };
                 }
             }
         });
+    }
+
+
+    // Cosmetic-only ad cleanup. Does not alter request streams or interfere with
+    // playback/account dialogs. Styles are removable and YouTube-only.
+    function applyCosmeticAdFiltering() {
+        const id = APP + '-cosmetic-ads';
+        const existing = document.getElementById(id);
+        if (!isYouTube || !settings.cosmeticAdFiltering || suspended) {
+            existing?.remove();
+            return;
+        }
+        if (existing || !document.head) return;
+        const style = document.createElement('style');
+        style.id = id;
+        style.textContent = [
+            '#masthead-ad',
+            'ytd-ad-slot-renderer',
+            'ytd-display-ad-renderer',
+            'ytd-in-feed-ad-layout-renderer',
+            '#player-ads',
+            '#related ytd-ad-slot-renderer'
+        ].join(',') + '{display:none!important;}';
+        document.head.appendChild(style);
+    }
+
+    function restoreAdMute() {
+        const state = adMuteState;
+        if (!state) return;
+        adMuteState = null;
+        state.video.removeEventListener('volumechange', state.onVolumeChange);
+        // If the user changed the mute state during the ad, leave their choice intact.
+        if (!state.userChanged && state.video.muted === true) {
+            try { state.video.muted = state.originalMuted; } catch { /* player controlled */ }
+        }
+    }
+
+    function muteForAd(video) {
+        if (adMuteState?.video === video) return;
+        restoreAdMute();
+        if (video.muted) return; // An already-muted player is owned by the user/site.
+        const state = {
+            video, originalMuted: Boolean(video.muted), pendingOwnChange: true,
+            userChanged: false, onVolumeChange: null
+        };
+        state.onVolumeChange = () => {
+            if (state.pendingOwnChange && video.muted) {
+                state.pendingOwnChange = false;
+                return;
+            }
+            state.userChanged = true;
+        };
+        adMuteState = state;
+        video.addEventListener('volumechange', state.onVolumeChange);
+        try {
+            video.muted = true;
+            setTimeout(() => { state.pendingOwnChange = false; }, 250);
+        } catch { restoreAdMute(); }
     }
 
     function handleAdAssist() {
         if (!isYouTube) return;
         const player = document.querySelector('#movie_player');
         const video = getVideo();
-        if (!player || !video) return;
+        const isAd = Boolean(player?.classList?.contains('ad-showing'));
+        if (!video || !isAd) {
+            restoreAdMute();
+            lastAdSkipButton = null;
+            return;
+        }
+        if (settings.muteAds) muteForAd(video);
+        else restoreAdMute();
 
-        const isAd = player.classList.contains('ad-showing');
-
-        if (isAd) {
-            if (settings.muteAds && !adWasMuted) {
-                volumeBeforeAd = video.muted;
-                video.muted = true;
-                adWasMuted = true;
-            }
-
-            if (settings.autoSkipAds) {
-                const skipButton =
-                    document.querySelector('.ytp-ad-skip-button-modern') ||
-                    document.querySelector('.ytp-ad-skip-button') ||
-                    document.querySelector('.ytp-skip-ad-button');
-
-                if (skipButton && !skipButton.disabled) {
-                    skipButton.click();
-                }
-            }
-        } else if (adWasMuted) {
-            video.muted = Boolean(volumeBeforeAd);
-            adWasMuted = false;
-            volumeBeforeAd = null;
+        if (!settings.autoSkipAds) return;
+        const skipButton =
+            document.querySelector('.ytp-ad-skip-button-modern') ||
+            document.querySelector('.ytp-ad-skip-button') ||
+            document.querySelector('.ytp-skip-ad-button');
+        if (!skipButton || skipButton.disabled || skipButton.getAttribute?.('aria-disabled') === 'true') return;
+        const isVisible = skipButton.offsetParent !== null ||
+            (skipButton.getClientRects?.().length ?? 0) > 0;
+        if (!isVisible) return;
+        const now = Date.now();
+        if (skipButton !== lastAdSkipButton || now - lastAdSkipAt > 1500) {
+            skipButton.click();
+            lastAdSkipAt = now;
+            lastAdSkipButton = skipButton;
         }
     }
 
@@ -1331,6 +1852,8 @@
         if (video === currentVideo) return;
         releaseTemporaryHold();
         const previous = currentVideo;
+        restoreAdMute();
+        MediaCoordinator.invalidate();
         unbindVideo();
         currentVideo = null;
         // Restore the old controlled player before leaving it; previews are never touched.
@@ -1338,6 +1861,7 @@
         clearTimeout(rateTimer);
         rateTimer = null;
         currentVideo = video;
+        MediaCoordinator.bind(video);
         if (!video) return;
         const state = stateFor(video);
         state.baseline = video.playbackRate;
@@ -1351,41 +1875,73 @@
             releaseTemporaryHold();
             clearTimeout(rateTimer);
             rateTimer = null;
-            const source = video.currentSrc || video.src || '';
+            const source = mediaSource(video);
+            // Empty/reloading media invalidates ownership immediately, even when src is blank.
+            MediaCoordinator.invalidate();
+            if (event.type !== 'loadedmetadata') MediaCoordinator.ready = false;
+            else MediaCoordinator.metadata(video);
             if (source && source !== state.source) {
                 state.source = source;
                 if (!locked || Math.abs(video.playbackRate - effectiveSpeed()) > 0.01) state.baseline = video.playbackRate;
                 // Media events never replenish the budget; only explicit user commands do.
             }
-            if (event.type === 'loadedmetadata') enforceRate();
+            if (event.type === 'loadedmetadata') {
+                enforceRate();
+                if (isYouTube) { ResumeManager.attach(video); ResumeManager.tryRestore(video); }
+                if ((isYouTube || isBilibili) && !sponsorSegments.length) fetchSponsorSegments();
+                renderSponsorVisuals();
+            }
         };
-        const onTime = () => { if (isYouTube) checkSponsorSkip(); };
+        const onTime = () => {
+            if (isYouTube) ResumeManager.save(video);
+            if (isYouTube || isBilibili) checkSponsorSkip();
+        };
+        const onSeeking = () => { if (isYouTube) ResumeManager.onSeeking(video); };
+        const onPause = () => { if (isYouTube) ResumeManager.save(video, true); };
+        const onEnded = () => { if (isYouTube) ResumeManager.save(video, true); };
         video.addEventListener('timeupdate', onTime);
+        video.addEventListener('seeking', onSeeking);
+        video.addEventListener('pause', onPause);
+        video.addEventListener('ended', onEnded);
         video.addEventListener('ratechange', onRate);
         ['emptied', 'loadstart', 'loadedmetadata'].forEach(type => video.addEventListener(type, onMedia));
         unbindVideo = () => {
+            ResumeManager.detach();
             video.removeEventListener('timeupdate', onTime);
+            video.removeEventListener('seeking', onSeeking);
+            video.removeEventListener('pause', onPause);
+            video.removeEventListener('ended', onEnded);
             video.removeEventListener('ratechange', onRate);
             ['emptied', 'loadstart', 'loadedmetadata'].forEach(type => video.removeEventListener(type, onMedia));
         };
         restoreRememberedSpeed();
         enforceRate();
+        if (isYouTube) {
+            ResumeManager.attach(video);
+            ResumeManager.tryRestore(video);
+        }
     }
 
     function onNavigation() {
+        ResumeManager.detach();
+        MediaCoordinator.invalidate();
+        sponsorFetchToken++; // Reject responses from the prior route immediately.
         releaseTemporaryHold();
         currentVideoId = getVideoId();
         currentChannelKey = null;
         sponsorSegments = [];
+        sponsorFullLabel = null;
+        clearSponsorVisuals();
         lastSponsorSkip = null;
         clearTimeout(navigationTimer);
         navigationTimer = setTimeout(() => {
             navigationTimer = null;
             if (suspended) return;
             bindVideo(getVideo());
+            if (isYouTube) { ResumeManager.attach(currentVideo); ResumeManager.tryRestore(currentVideo); }
             ensureControlButton();
             restoreRememberedSpeed();
-            if (isYouTube) fetchSponsorSegments();
+            if (isYouTube || isBilibili) fetchSponsorSegments();
         }, 450);
     }
 
@@ -1543,13 +2099,22 @@
         }
         refreshActiveVideo();
         enforceRate();
-        if (isYouTube) handleAdAssist();
+        if (isYouTube) {
+            handleAdAssist();
+            ResumeManager.tryRestore(currentVideo);
+            ResumeManager.cleanup();
+        }
+        if (isYouTube || isBilibili) renderSponsorVisuals();
     }
     let watchdog = setInterval(tick, 800);
 
     window.addEventListener('blur', releaseTemporaryHold);
     document.addEventListener('visibilitychange', () => { if (document.hidden) releaseTemporaryHold(); });
     window.addEventListener('pagehide', () => {
+        ResumeManager.detach();
+        clearSponsorVisuals();
+        restoreAdMute();
+        document.getElementById(APP + '-cosmetic-ads')?.remove();
         releaseTemporaryHold();
         bindVideo(null);
         suspended = true;
@@ -1565,6 +2130,8 @@
         observer.observe(document.documentElement, { childList: true, subtree: true });
         watchdog = setInterval(tick, 800);
         refreshActiveVideo();
+        applyCosmeticAdFiltering();
+        if (isYouTube) { ResumeManager.attach(currentVideo); ResumeManager.tryRestore(currentVideo); }
     });
 
     window.addEventListener('resize', () => {
@@ -1572,6 +2139,7 @@
     });
 
     ensureStyles();
+    applyCosmeticAdFiltering();
     bindVideo(getVideo());
     ensureControlButton();
     onNavigation();

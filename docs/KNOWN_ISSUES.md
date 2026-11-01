@@ -1,3 +1,19 @@
+# Playback Suite 2.0 candidate — Known issues
+
+- **Integrated source candidate, not a verified release**: no GitHub Release, real YouTube/Bilibili/Tampermonkey/FB/IG/Threads acceptance or independent security audit. Focused code-review evidence is recorded in the repair PR. The repair candidate runs 28 synthetic groups locally; exact-head CI is recorded in its PR. These are NOT full browser tests.
+- YouTube resume uses site-readable **localStorage**, not GM private storage. Cross-tab writes are last-write-wins and not transactional; original Auto-Resume's live thumbnail bar sync is not implemented. Not full feature parity.
+- Bilibili sponsor requests/skips/markers are disabled, including when the stored opt-in is true. No active-media CID adapter has been verified. URL p and INITIAL_STATE page CID are not media evidence; this is a safety closure, not completed Bilibili SponsorBlock support.
+- Bilibili `/video/BV...` and `/zh-Hant/video/BV...` use one strict route parser. AV, arbitrary locale, malformed/duplicate p and unknown paths fail closed. Live URL redirects and Tampermonkey injection are NOT_VERIFIED.
+- YouTube route/source transitions invalidate checkpoints and sponsor responses. A same-source SPA transition without reliable new metadata stays unavailable rather than relabeling old media with a new URL.
+- New static ad CSS is opt-in and conservative. Does not seek to duration, force play or remove anti-adblock/consent dialogs; cannot guarantee an ad-free player.
+- SponsorBlock's SHA-256 prefix reduces exposed ID specificity but does not make network access anonymous; Bilibili new host permission is bsbsb.top. Data may be incomplete or incorrect.
+- Metadata @name rebrand with unchanged @namespace/raw URL might still be recognized as a new script by some managers. Verify no duplicate enabled installs before user migration. GitHub repo slug is unchanged.
+- New settings flags default OFF; merging or installing this candidate does not establish production readiness. Full-site match extension to YouTube Music/mobile/embed remains out of scope.
+
+Original 1.2.0 candidate notes (historical) follow.
+
+---
+
 # 已知限制 — 1.2.0 候選
 
 - 尚未做真實 Bilibili／既有四站＋Tampermonkey 驗收。合成 fixture 不能證明真站 DOM、影片傳輸或 manager sandbox 相容。
