@@ -4,23 +4,25 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('../speed-pro.user.js', import.meta.url), 'utf8');
 function fixture(host = 'www.bilibili.com', path = '/video/BVfixture/') {
-  const videos = []; const jobs = []; const requests = [];
+  const videos = []; const jobs = []; const requests = []; const store = new Map();
+  const localStorage = { getItem: k => store.get(k) ?? null, setItem: (k,v) => store.set(k,String(v)),
+    removeItem: k => store.delete(k), key: i => [...store.keys()][i] || null, get length() { return store.size; } };
   const location = { hostname: host, pathname: path, href: `https://${host}${path}?p=1` };
   const document = { querySelector: () => null, querySelectorAll: selector => videos.filter(v => selector === 'video' || v.main), getElementById: () => null };
   const context = vm.createContext({ location, document, window: { innerWidth: 1000, innerHeight: 800 },
     structuredClone, URL, console, setTimeout: fn => (jobs.push(fn), jobs.length), clearTimeout: () => {},
-    localStorage: { getItem: () => null, setItem: () => {} }, GM_xmlhttpRequest: x => requests.push(x) });
+    localStorage, GM_xmlhttpRequest: x => requests.push(x) });
   // Export a private test seam in the VM only, never in the installed userscript.
   vm.runInContext(source.slice(0, source.indexOf("    document.addEventListener('keydown'")) + `
     showToast = () => {}; updateControlUI = () => {}; renderPanelValues = () => {};
     globalThis.api = { getVideo, bindVideo, startHold, stopHold, toggleLock, setPreset, enforceRate,
-      ignoreInput, fetchSponsorSegments, releaseTemporaryHold, stateFor, coordinator: MediaCoordinator,
+      ignoreInput, fetchSponsorSegments, releaseTemporaryHold, stateFor, coordinator: MediaCoordinator, resume: ResumeManager,
       media: () => currentVideo, flags: () => ({locked, holdActive}),
       navigation: () => { currentVideoId = getVideoId(); }, defaults: () => settings };
   })();`, context);
   const video = (rate = 1, main = true) => {
     const listeners = new Map(); let actual = rate; let writes = 0;
-    const v = { main, paused: false, ended: false, src: 'one.mp4', currentSrc: 'one.mp4',
+    const v = { main, paused: false, ended: false, seeking: false, readyState: 4, currentTime: 0, duration: 120, src: 'one.mp4', currentSrc: 'one.mp4',
       getBoundingClientRect: () => ({ left: 0, top: 0, right: 600, bottom: 400, width: 600, height: 400 }),
       addEventListener: (type, fn) => { const set = listeners.get(type) || new Set(); set.add(fn); listeners.set(type, set); },
       removeEventListener: (type, fn) => listeners.get(type)?.delete(fn),
@@ -31,7 +33,7 @@ function fixture(host = 'www.bilibili.com', path = '/video/BVfixture/') {
     videos.push(v); return v;
   };
   const drain = () => { let i = 0; while (jobs.length) { assert(++i < 50, 'finite timer work'); jobs.shift()(); } };
-  return { ...context.api, video, videos, location, requests, drain };
+  return { ...context.api, video, videos, location, requests, store, drain };
 }
 let checks = 0;
 const test = (name, fn) => { fn(); checks++; console.log(`PASS ${name}`); };
@@ -51,6 +53,30 @@ test('adversarial rate reset is bounded across metadata events and watchdog', ()
  const f=fixture(); const a=f.video(); a.reset=true; f.bindVideo(a); f.setPreset(2); f.drain(); assert.equal(a.writes(),4); assert.equal(f.stateFor(a).blocked,true);
  for(let i=0;i<20;i++){ a.emit('loadstart'); a.emit('loadedmetadata'); f.enforceRate(); f.drain(); }
  assert.equal(a.writes(),4); a.reset=false; f.setPreset(2); assert.equal(a.playbackRate,2);
+});
+test('opt-in resume stores standalone and playlist checkpoints separately', () => {
+ const f=fixture('www.youtube.com','/watch');
+ f.location.href='https://www.youtube.com/watch?v=abcdefghijk';
+ f.defaults().resumeEnabled=true;
+ const v=f.video(); f.bindVideo(v); v.currentTime=40; f.resume.save(v,true);
+ const key=f.resume.keyFor('abcdefghijk');
+ assert.equal(f.resume.read(key).time,40);
+ f.resume.detach();
+ f.location.href='https://www.youtube.com/watch?v=abcdefghijk&list=PLtest123';
+ f.resume.attach(v); v.currentTime=65; f.resume.save(v,true);
+ assert.equal(f.resume.read(f.resume.keyFor('abcdefghijk','PLtest123')).time,65);
+ assert.equal(f.resume.read(key).time,40);
+});
+test('resume respects explicit YouTube t, completion, and stale checkpoints', () => {
+ const f=fixture('www.youtube.com','/watch'); const v=f.video();
+ f.defaults().resumeEnabled=true;
+ f.location.href='https://www.youtube.com/watch?v=abcdefghijk';
+ f.bindVideo(v); f.resume.write(f.resume.keyFor('abcdefghijk'),
+    {time:30,duration:120,completed:false,savedAt:Date.now()});
+ f.resume.attach(v); assert.equal(f.resume.tryRestore(v),true); assert.equal(v.currentTime,30);
+ f.resume.detach(); v.currentTime=0;
+ f.location.href='https://www.youtube.com/watch?v=abcdefghijk&t=10';
+ f.resume.attach(v); assert.equal(f.resume.tryRestore(v),false); assert.equal(v.currentTime,0);
 });
 test('media coordinator rejects stale generation and invalid seek', () => {
  const f=fixture(); const first=f.video(1.25); f.bindVideo(first);
