@@ -1,6 +1,6 @@
 # Playback Suite｜跨平台影片播放助手
 
-> 本分支為 **2026-11-02 未發行的來源通知／相容性收尾**；下方 main 安裝入口尚不包含此分支變更。本輪未更新 Greasy Fork，也不表示安裝／升級已驗收。
+> **2026-11-02 來源通知／相容性收尾已透過 PR #12 合入 main**，下方 main 安裝入口已包含這批變更；尚未更新 Greasy Fork 或建立 GitHub Release，也不表示安裝／升級已驗收。
 
 **2.0.0 候選版 / MIT / 單檔 Userscript**  
 由 Speed Pro 擴充而成：倍速、YouTube 自動續播、YouTube SponsorBlock、可選靜態廣告隱藏、PiP 與 PNG 截圖。
