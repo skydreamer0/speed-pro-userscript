@@ -1,3 +1,12 @@
+# 2026-11-02 收尾狀態
+
+- 本輪 Node 30 組與 5 個負控通過，Chromium fixture 仍在啟動前被 socket 限制阻擋；新增來源通知的真 DOM／視覺排版亦未驗證。
+- 授權來源補件未結清：1.1.0 匯入前史、精確 supplied scripts 附件、Greasy Fork 發行物 hash、Bilibili API／資料條件仍有待核項；見 [第三方通知](THIRD_PARTY_NOTICES.md)。
+- 既有 YouTube SponsorBlock、原生廣告略過／靜音預設開啟；並非全部自動化關閉。新增的 resume／playlist jump／markers／cosmetic filtering 預設關閉。維持設定與權限不變，不把文件補強說成平台已批准。
+- 詳見[版本綁定的相容性矩陣](COMPATIBILITY_20261102.md)。以下保留 2026-11-01 及更早歷史結果，不覆寫為本輪實測。
+
+---
+
 # Playback Suite 2.0 candidate — Known issues
 
 - **Integrated source candidate, not a verified release**: no GitHub Release, real YouTube/Bilibili/Tampermonkey/FB/IG/Threads acceptance or independent security audit. Focused code-review evidence is recorded in the repair PR. The repair candidate runs 28 synthetic groups locally; exact-head CI is recorded in its PR. These are NOT full browser tests.

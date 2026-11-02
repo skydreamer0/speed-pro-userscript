@@ -4,8 +4,8 @@ import vm from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('../speed-pro.user.js', import.meta.url), 'utf8');
-function fixture(host = 'www.bilibili.com', path = '/video/BV1abcdEFGH2/') {
-  const videos = []; const jobs = []; const requests = []; const store = new Map();
+function fixture(host = 'www.bilibili.com', path = '/video/BV1abcdEFGH2/', savedEntries = {}) {
+  const videos = []; const jobs = []; const requests = []; const store = new Map(Object.entries(savedEntries));
   const localStorage = { getItem: k => store.get(k) ?? null, setItem: (k,v) => store.set(k,String(v)),
     removeItem: k => store.delete(k), key: i => [...store.keys()][i] || null, get length() { return store.size; } };
   const location = { hostname: host, href: `https://${host}${path}?p=1`,
@@ -41,6 +41,24 @@ function fixture(host = 'www.bilibili.com', path = '/video/BV1abcdEFGH2/') {
 }
 let checks = 0;
 const test = (name, fn) => { fn(); checks++; console.log(`PASS ${name}`); };
+test('legacy settings and channel keys survive without opting into new modules', () => {
+ const saved = {
+  'yt-speed-pro:settings': JSON.stringify({speed:2.25,turboSpeed:4,rememberChannel:false,sponsorBlock:false,autoSkipAds:false,muteAds:false}),
+  'yt-speed-pro:channels': JSON.stringify({'/@example':1.75}),
+  'unrelated:setting': 'keep'
+ };
+ const f=fixture('www.youtube.com','/watch',saved);
+ assert.equal(f.defaults().speed,2.25); assert.equal(f.defaults().turboSpeed,4);
+ for(const key of ['rememberChannel','sponsorBlock','autoSkipAds','muteAds','resumeEnabled','resumePlaylistJump','bilibiliSponsorBlock','showSponsorMarkers','cosmeticAdFiltering']) assert.equal(f.defaults()[key],false,key);
+ assert.equal(f.store.get('yt-speed-pro:channels'),saved['yt-speed-pro:channels']);
+ assert.equal(f.store.get('unrelated:setting'),'keep');
+ assert.deepEqual([...f.store.keys()].sort(),Object.keys(saved).sort());
+});
+test('fresh-install defaults disclose existing automatic features without enabling new modules', () => {
+ const f=fixture();
+ for(const key of ['sponsorBlock','autoSkipAds','muteAds']) assert.equal(f.defaults()[key],true,key);
+ for(const key of ['resumeEnabled','resumePlaylistJump','bilibiliSponsorBlock','showSponsorMarkers','cosmeticAdFiltering']) assert.equal(f.defaults()[key],false,key);
+});
 test('Bilibili main-only selection and unsupported SPA exit', () => {
  const f=fixture(); f.video(1,false); assert.equal(f.getVideo(),null); const main=f.video(); assert.equal(f.getVideo(),main);
  f.location.pathname='/bangumi/play/ep1'; assert.equal(f.getVideo(),null);

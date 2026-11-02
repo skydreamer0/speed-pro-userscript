@@ -1,3 +1,10 @@
+## Unreleased — 來源通知與相容性收尾（2026-11-02）
+
+- 單檔保留完整專案 MIT notice，YouTube 面板增加 SponsorBlock 資料來源／CC BY-NC-SA 4.0 與預設功能、外連及 localStorage 說明。
+- 增加固定來源 ledger、1.1.0 前史待查、平台／資料授權邊界，以及相容性與成熟產品改善計畫。
+- 加入 legacy 設定保留和預設值兩組 VM 回歸；browser fixture 增加通知契約，但本環境 Chromium socket 啟動受限，沒有執行 DOM assertions。
+- 不改播放行為、預設值、權限、儲存鍵、LICENSE、版本或更新 URL；Bilibili SponsorBlock 繼續停用。Draft PR 不是發布；未更新 Greasy Fork。
+
 ## 2.0.0 integrated repair candidate (2026-11-01; PR #10, no GitHub Release)
 
 - Accept only explicit Bilibili normal/zh-Hant BV routes with validated p values.

@@ -24,6 +24,44 @@
 // @run-at       document-idle
 // ==/UserScript==
 
+/*
+MIT License
+
+Copyright (c) 2026 George (skydreamer0)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+External data / source acknowledgements (not covered by the MIT grant above):
+Uses SponsorBlock data from https://sponsor.ajay.app/ under CC BY-NC-SA 4.0.
+https://creativecommons.org/licenses/by-nc-sa/4.0/
+https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License
+Playback Suite filters and displays returned segments; it does not bundle the database.
+The SponsorBlock extension's GPL code license is separate from its API/data terms.
+
+Design references: Bilibili-Evolved, h5player, ElectroKnight22's YouTube Auto-Resume,
+iamfugui/youtube-adb and hxueh's SponsorBlock Lite. This is not a license grant
+for their code or an endorsement. See the versioned source ledger and limitations:
+https://github.com/skydreamer0/speed-pro-userscript/blob/codex/playback-suite-provenance-compat-20261102/docs/PROVENANCE.md
+https://github.com/skydreamer0/speed-pro-userscript/blob/codex/playback-suite-provenance-compat-20261102/docs/THIRD_PARTY_NOTICES.md
+The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
+*/
+
 (() => {
     'use strict';
 
@@ -667,6 +705,10 @@
             #${APP}-button[data-locked="true"] {
                 background: rgba(255,255,255,.18);
             }
+            #${APP}-panel [data-role="source-notices"] a {
+                color: #a5d6ff;
+                text-decoration: underline;
+            }
             #${APP}-panel {
                 position: fixed;
                 z-index: 2147483646;
@@ -1163,6 +1205,17 @@
                     <button class="${APP}-action" data-action="reset-channel">清除頻道速度</button>
                     <button class="${APP}-action" data-action="clear-resume">清除續播紀錄</button>
                     <button class="${APP}-action" data-action="reset-all">重設設定</button>
+                </div>
+            </div>
+
+            <div class="${APP}-section" data-role="source-notices">
+                <div class="${APP}-section-title">來源與授權</div>
+                <div class="${APP}-sub" style="line-height:1.7">
+                    程式碼採 MIT；外部資料另依來源條件。非平台官方擴充。<br>
+                    <a href="https://github.com/skydreamer0/speed-pro-userscript/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT 授權</a> ·
+                    <a href="https://github.com/skydreamer0/speed-pro-userscript/blob/codex/playback-suite-provenance-compat-20261102/docs/PROVENANCE.md" target="_blank" rel="noopener noreferrer">來源紀錄與限制</a>
+                    ${isYouTube ? `<p>使用 <a href="https://sponsor.ajay.app/" target="_blank" rel="noopener noreferrer">SponsorBlock</a> 社群資料（<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>），依設定篩選及呈現，未修改遠端資料庫。</p>
+                    <p>SponsorBlock 預設開啟，會傳送影片雜湊前綴；服務仍可見 IP。原生廣告略過／靜音亦預設開啟，靜態廣告隱藏預設關閉；可在上方分別停用。續播預設關閉，紀錄存於網站可讀取的 localStorage。</p>` : ''}
                 </div>
             </div>
 
