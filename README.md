@@ -1,5 +1,7 @@
 # Playback Suite｜跨平台影片播放助手
 
+> 本分支為 **2026-11-02 未發行的來源通知／相容性收尾**；下方 main 安裝入口尚不包含此分支變更。本輪未更新 Greasy Fork，也不表示安裝／升級已驗收。
+
 **2.0.0 候選版 / MIT / 單檔 Userscript**  
 由 Speed Pro 擴充而成：倍速、YouTube 自動續播、YouTube SponsorBlock、可選靜態廣告隱藏、PiP 與 PNG 截圖。
 
@@ -37,7 +39,7 @@ Bilibili 主影片找不到即不控制。Bilibili 番劇／直播不在範圍�
 
 **SponsorBlock**：YouTube 原有功能擴充為 SHA-256 前四碼查詢與片段標記；Bilibili 跳段目前停用，即使設定開啟也不送請求、不跳段、不畫標記；URL／初始頁面 CID 不能證明實際影片身分，待真站驗證的 adapter 才能啟用。全片分類只顯示標籤，不直接跳掉整片；片段可透過提示按鈕返回。資料來自社群標記，可能有錯誤，隨時可關閉。
 
-**廣告**：只在 YouTube 明確進入 ad-showing 狀態時點擊可見的原生略過按鈕或暫時靜音。新增 CSS 預設關閉，只隱藏已辨認的靜態廣告元素；**不會快轉整段廣告到影片結尾、強制播放或任意移除彈窗**。
+**廣告**：原生略過與廣告靜音**預設開啟**，可分別關閉；不是純手動控制。只在 YouTube 明確進入 ad-showing 狀態時點擊可見的原生略過按鈕或暫時靜音。新增 CSS 預設關閉，只隱藏已辨認的靜態廣告元素；**不會快轉整段廣告到影片結尾、強制播放或任意移除彈窗**。
 
 ## 安裝、更新與改名
 
@@ -54,8 +56,14 @@ Bilibili 主影片找不到即不控制。Bilibili 番劇／直播不在範圍�
 - Bilibili 的缺口已採安全停用處理，不等於 SponsorBlock 功能已完成。語系網址倍速僅合成測試通過，真站與管理器仍為 NOT_VERIFIED。
 - 同節點換片若沒有新的可識別媒體來源，YouTube 續播／SponsorBlock 會保守停止，不猜測網址與媒體已對齊。
 
+## 來源、資料與使用邊界
+
+本程式碼採 MIT；不代表第三方 API／資料也採 MIT。YouTube 使用 [SponsorBlock](https://sponsor.ajay.app/) 社群資料，其 [API／資料條款](https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License) 為 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)，另有明確許可者除外。SponsorBlock 擴充程式的 GPL 與 API／資料條款不同；本案沒有載入該擴充程式。商業整合／資料再散布須先核對適用條件，不能以本案 MIT 覆蓋。
+
+設計參考、固定上游 license、1.1.0 匯入前史待查項與平台條款風險，見 [來源紀錄](docs/PROVENANCE.md)及[第三方通知](docs/THIRD_PARTY_NOTICES.md)。有致謝不等於所有來源與法律風險已驗證；保守廣告輔助也不代表平台授權。來源連結由使用者點擊才開啟，沒有為顯示通知下載遠端程式或素材。
+
 ## 測試與限制
 
-`npm test`：Node >=18，沒有 npm 相依，執行語法、metadata 與 28 組 production-function 合成 fixture；`node scripts/repair-negative-test.mjs` 驗證 5 個故意破壞防護的負控會失敗。獨立評審另驗 9 組，最終 head 的 CI 記錄在 [PR #10](https://github.com/skydreamer0/speed-pro-userscript/pull/10)。**尚未**完成真 YouTube／Bilibili／FB／IG／Threads、Tampermonkey 及完整 DOM browser 驗收；Bilibili 跳段保持停用，續播跨分頁競態、同 source SPA 可用性及進度縮圖同步仍有限制。原碼合併不代表發布或真站驗收完成。
+`npm test`：Node >=18，沒有 npm 相依；本收尾分支執行語法、metadata／notice 與 30 組 production-function 合成 fixture（原 28 組加設定相容性／預設值 2 組）；`node scripts/repair-negative-test.mjs` 驗證 5 個故意破壞防護的負控會失敗。獨立評審另驗 9 組，原整合 head 的 CI 記錄在 [PR #10](https://github.com/skydreamer0/speed-pro-userscript/pull/10)。**尚未**完成真 YouTube／Bilibili／FB／IG／Threads、Tampermonkey 及完整 DOM browser 驗收；Bilibili 跳段保持停用，續播跨分頁競態、同 source SPA 可用性及進度縮圖同步仍有限制。原碼合併不代表發布或真站驗收完成。
 
-[整合 SPEC](docs/PLAYBACK_SUITE_2.0_SPEC.md) · [原 Bilibili SPEC](SPEC.md) · [測試](docs/TESTING.md) · [已知限制](docs/KNOWN_ISSUES.md) · [來源與授權](docs/PROVENANCE.md) · [變更](CHANGELOG.md) · [安全](SECURITY.md) · [貢獻](CONTRIBUTING.md)
+[本輪相容性證據](docs/COMPATIBILITY_20261102.md) · [產品改善順序](docs/PRODUCT_DIRECTION.md) · [整合 SPEC](docs/PLAYBACK_SUITE_2.0_SPEC.md) · [原 Bilibili SPEC](SPEC.md) · [測試](docs/TESTING.md) · [已知限制](docs/KNOWN_ISSUES.md) · [來源與授權](docs/PROVENANCE.md) · [變更](CHANGELOG.md) · [安全](SECURITY.md) · [貢獻](CONTRIBUTING.md)

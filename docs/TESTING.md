@@ -1,3 +1,11 @@
+# 2026-11-02 收尾分支
+
+目前結果以 [COMPATIBILITY_20261102.md](COMPATIBILITY_20261102.md) 為準：Node v24.22.1，`npm test` 30 組（原 28 加設定／預設 2 組）、5 個 mutation 負控通過；新 notices 完整 MIT／來源連結受 static check 保護。Chromium 在 socket 初始化被環境限制阻擋，browser assertions 與視覺檢查未執行。真站／Tampermonkey／升級仍 NOT RUN。
+
+以下為既有 exact-version 歷史證據，不把以前的 PASS 當本輪瀏覽器或法律驗收。
+
+---
+
 # Integrated repair candidate verification (2026-11-01)
 
 Runtime base: PR #8 `e46f05cb170ebbb534341ea84cce442a7e6c16cb`, corrected by #10. The main-based integration preserves #3/#9 evidence and does not change the reviewed runtime or test scripts. See [repair evidence and integration plan](REPAIR_20261101.md).

@@ -24,6 +24,11 @@ try {
  for(const host of ['www.youtube.com','www.facebook.com','www.instagram.com','www.threads.com','www.bilibili.com']) {
   const p=await fixture(host); const button=host==='www.youtube.com'?'#yt-speed-pro-button':'#yt-speed-pro-settings-button';
   await p.click(button); assert.equal(await p.locator('#yt-speed-pro-panel').isVisible(),true);
+  const notices=p.locator('[data-role="source-notices"]');
+  assert.equal(await notices.count(),1);
+  assert.equal(await notices.locator('a[href$="/docs/PROVENANCE.md"]').count(),1);
+  assert.equal(await notices.locator('a[href="https://sponsor.ajay.app/"]').count(),host==='www.youtube.com'?1:0);
+  for(const link of await notices.locator('a').all()) assert.equal(await link.getAttribute('rel'),'noopener noreferrer');
   await p.locator('[data-action="reset-all"]').click(); assert.equal(await p.locator('#yt-speed-pro-panel input[type="number"]').first().inputValue(),'3');
   await p.locator('.yt-speed-pro-close').click(); await p.click(button); assert.equal(await p.locator('#yt-speed-pro-panel').isVisible(),true);
   await p.locator('.yt-speed-pro-close').click();

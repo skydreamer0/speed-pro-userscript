@@ -28,8 +28,12 @@ assert.deepEqual(values('match').sort(), [
   'https://www.threads.com/*', 'https://www.threads.net/*'
 ].sort());
 for (const file of ['README.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CHANGELOG.md',
-  'LICENSE', 'docs/PROVENANCE.md', 'docs/KNOWN_ISSUES.md', 'docs/TESTING.md']) {
+  'LICENSE', 'docs/PROVENANCE.md', 'docs/THIRD_PARTY_NOTICES.md', 'docs/COMPATIBILITY_20261102.md', 'docs/PRODUCT_DIRECTION.md', 'docs/KNOWN_ISSUES.md', 'docs/TESTING.md']) {
   assert(existsSync(new URL(`../${file}`, import.meta.url)), `Missing ${file}`);
+}
+assert(source.includes(readFileSync(new URL('../LICENSE', import.meta.url), 'utf8').trim()), 'Standalone userscript must retain the full project MIT notice');
+for (const required of ['https://sponsor.ajay.app/', 'https://creativecommons.org/licenses/by-nc-sa/4.0/', 'data-role="source-notices"', 'pre-import provenance']) {
+  assert(source.includes(required), `Missing source/data disclosure: ${required}`);
 }
 assert.deepEqual(pkg.dependencies ?? {}, {});
 assert.deepEqual(pkg.devDependencies ?? {}, {});
