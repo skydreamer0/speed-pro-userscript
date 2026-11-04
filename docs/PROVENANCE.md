@@ -52,3 +52,10 @@ User-provided references, checked as **design inputs** rather than vendored runt
 - Public API descriptions: https://wiki.sponsor.ajay.app/w/API_Docs and https://github.com/hanydd/BilibiliSponsorBlock/wiki/API .
 
 Implementation is original adaptations to existing project structure, with feature gates and bounded validation. API/database licenses and site terms remain independent of the repository's MIT declaration. Independent licensing review and real-site testing are NOT RUN; do not claim verified legal or behavioral equivalence with upstream.
+
+## 2026-11-04 thumbnail and cross-tab candidate
+
+- Design reference remains [ElectroKnight22 / YouTube Auto-Resume 2.8.1](https://greasyfork.org/en/scripts/526798-youtube-auto-resume/code), whose metadata declares MIT. The provided reference was inspected, including its thumbnail and cross-tab behavior.
+- This change implements those behaviors within Playback Suite's existing ResumeManager using original project code. It does not copy the source or load YouTube Helper API. Existing source notices and the project MIT license remain.
+- No AGPL code from the separately supplied multi-site helper is imported. No remote dependencies, new host grants, GM permissions or third-party data transmissions are added.
+- This is a bounded feature implementation, not a full equivalence or legal audit of either upstream script.
