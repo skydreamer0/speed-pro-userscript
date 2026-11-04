@@ -197,6 +197,10 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
             // Sponsor / resume must never seek the content while an ad player is active.
             if (isYouTube && document.querySelector('#movie_player')?.classList?.contains('ad-showing')) return false;
             try {
+                if (isYouTube && ResumeManager.active?.video === video) {
+                    ResumeManager.active.automaticSeekTarget = time;
+                    ResumeManager.active.ignoreOwnSeekUntil = Date.now() + 1500;
+                }
                 video.currentTime = time;
                 return Math.abs(video.currentTime - time) <= 2;
             } catch { return false; }
@@ -208,8 +212,47 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
     const ResumeManager = {
         prefix: APP + ':resume:v1:',
         active: null,
+        observations: new WeakMap(),
         lastSweep: 0,
         lastErrorShown: false,
+        storageListener: null,
+        startSync() {
+            if (!isYouTube || this.storageListener) return;
+            this.storageListener = event => this.onStorage(event);
+            window.addEventListener('storage', this.storageListener);
+        },
+        stopSync() {
+            if (this.storageListener) window.removeEventListener('storage', this.storageListener);
+            this.storageListener = null;
+            ResumeThumbnails.cancel();
+        },
+        raw(key) {
+            try { return localStorage.getItem(key); } catch { return null; }
+        },
+        onStorage(event) {
+            if (event.storageArea !== localStorage || (event.key !== null && !event.key?.startsWith(this.prefix))) return;
+            const state = this.active;
+            if (state && (event.key === null || event.key === state.ctx.key)) {
+                const value = this.raw(state.ctx.key);
+                if (value !== state.observed) {
+                    state.observed = value;
+                    state.remoteChanged = true;
+                    state.observedTime = Number(state.video.currentTime);
+                    state.localIntent = false;
+                }
+            }
+            // Re-read actual storage, not event.newValue: queued events can already be stale.
+            // Remote updates repaint indicators, never seek the currently playing video.
+            ResumeThumbnails.schedule();
+        },
+        progress(key) {
+            const value = this.read(key), now = Date.now();
+            if (!value || !Number.isFinite(value.time) || !Number.isFinite(value.duration) ||
+                !Number.isFinite(value.savedAt) || typeof value.completed !== 'boolean' ||
+                value.duration < 10 || value.time < 5 || value.time > value.duration + 1 ||
+                now - value.savedAt > 90 * 86400000 || value.savedAt > now + 60000) return null;
+            return value;
+        },
         context() {
             if (!isYouTube) return null;
             try {
@@ -243,6 +286,7 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
                 const previous = this.read(key);
                 if (previous && Number(previous.savedAt) > value.savedAt) return false;
                 localStorage.setItem(key, JSON.stringify(value));
+                ResumeThumbnails.schedule();
                 return true;
             } catch {
                 if (!this.lastErrorShown) {
@@ -261,10 +305,17 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
             }
             if (this.active?.video === video && this.active.ctx.key === ctx.key &&
                 MediaCoordinator.isCurrent(this.active.token)) return;
+            const observed = this.raw(ctx.key);
+            const prior = this.observations.get(video);
+            const retained = prior?.ctx.key === ctx.key && prior.token.source === token.source;
             this.active = {
                 video, ctx, token, restored: false, userSeeked: false, lastSavedAt: 0,
-                startedAt: Date.now(), ignoreOwnSeekUntil: 0
+                startedAt: Date.now(), ignoreOwnSeekUntil: 0,
+                observed, observedTime: Number(video.currentTime), automaticSeekTarget: null,
+                remoteChanged: Boolean(observed) || Boolean(retained &&
+                    (prior.observed !== observed || prior.remoteChanged)), localIntent: false
             };
+            this.observations.set(video, this.active);
         },
         detach() {
             this.save(this.active?.video, true);
@@ -272,9 +323,13 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
         },
         onSeeking(video) {
             const state = this.active;
-            if (!state || state.video !== video || Date.now() < state.ignoreOwnSeekUntil) return;
+            if (!state || state.video !== video) return;
+            if (Date.now() < state.ignoreOwnSeekUntil &&
+                Math.abs(Number(video.currentTime) - state.automaticSeekTarget) < 0.25) return;
             // Explicit user/native player seeks must win over our initial restore.
             if (video.currentTime > 1 || state.ctx.explicitTime) state.userSeeked = true;
+            state.localIntent = true;
+
         },
         isAd() {
             return Boolean(document.querySelector('#movie_player')?.classList?.contains('ad-showing'));
@@ -311,7 +366,7 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
                 state.restored = true;
                 return true;
             }
-            const saved = this.read(ctx.key);
+            const saved = this.progress(ctx.key);
             const endMargin = Math.min(duration / 2, Math.max(15, duration * 0.01));
             if (!saved || saved.completed || !Number.isFinite(saved.time) || !Number.isFinite(saved.duration) ||
                 saved.time < 5 || saved.time >= duration - endMargin ||
@@ -324,6 +379,7 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
             const ok = MediaCoordinator.seek(state.token, saved.time);
             if (!ok) { state.ignoreOwnSeekUntil = 0; return false; }
             state.restored = true;
+            state.observedTime = Number(video.currentTime);
             showToast('已接續上次播放進度');
             return true;
         },
@@ -336,10 +392,28 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
             const t = Number(video.currentTime), d = Number(video.duration);
             if (!Number.isFinite(t) || !Number.isFinite(d) || d < 10 || t < 5 || t > d + 1) return;
             const completed = Boolean(video.ended || d - t <= Math.min(d / 2, Math.max(15, d * 0.01)));
+            const raw = this.raw(state.ctx.key);
+            if (raw !== state.observed) {
+                // Catch a newer write even before the browser delivers its storage event.
+                state.observed = raw;
+                state.remoteChanged = true;
+                state.observedTime = t;
+                state.localIntent = false;
+            }
+            // A paused page restored from BFCache must not re-save its retained position.
+            if (!state.localIntent && Math.abs(t - state.observedTime) < 0.1) return;
+            if (state.remoteChanged && !(!document.hidden && (state.localIntent ||
+                (!force && !video.paused && Math.abs(t - state.observedTime) > 0.1)))) return;
+            const previous = this.progress(state.ctx.key);
+            if (previous && previous.time === Math.round(t * 10) / 10 && previous.completed === completed) return;
             const entry = { time: Math.round(t * 10) / 10, duration: Math.round(d * 10) / 10,
                 completed, savedAt: now };
             if (this.write(state.ctx.key, entry)) {
                 state.lastSavedAt = now;
+                state.observed = this.raw(state.ctx.key);
+                state.observedTime = t;
+                state.remoteChanged = false;
+                state.localIntent = false;
                 if (state.ctx.playlistId) this.write(this.prefix + 'last:' + state.ctx.playlistId,
                     { videoId: state.ctx.id, savedAt: now });
             }
@@ -371,9 +445,84 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
                     const key = localStorage.key(i);
                     if (key?.startsWith(this.prefix)) localStorage.removeItem(key);
                 }
-                if (this.active) this.active.restored = true;
+                if (this.active) {
+                    this.active.restored = true;
+                    this.active.observed = null;
+                    this.active.observedTime = Number(this.active.video.currentTime);
+                    this.active.remoteChanged = true;
+                    this.active.localIntent = false;
+                }
+                ResumeThumbnails.schedule();
                 return true;
             } catch { return false; }
+        }
+    };
+    // Original project implementation. Design reference: ElectroKnight22's MIT
+    // YouTube Auto-Resume 2.8.1; no helper library, link rewriting, or remote code.
+    const ResumeThumbnails = {
+        timer: null,
+        hosts: new Set(),
+        selector: 'a#thumbnail, ytd-thumbnail a, a.yt-lockup-view-model__content-image',
+        barClass: APP + '-resume-progress',
+        hostClass: APP + '-resume-thumbnail',
+        cancel() { clearTimeout(this.timer); this.timer = null; },
+        schedule() {
+            if (!isYouTube || suspended || this.timer !== null || (!settings.resumeEnabled && !this.hosts.size)) return;
+            this.timer = setTimeout(() => { this.timer = null; this.render(); }, 250);
+        },
+        keyForLink(href) {
+            try {
+                const url = new URL(href, location.href);
+                if (url.protocol !== 'https:' || url.hostname !== 'www.youtube.com' || url.port ||
+                    url.username || url.password || url.pathname !== '/watch') return null;
+                const id = url.searchParams.get('v');
+                if (!/^[A-Za-z0-9_-]{11}$/.test(id || '') || url.searchParams.getAll('v').length !== 1 ||
+                    url.searchParams.getAll('list').length > 1) return null;
+                const candidate = url.searchParams.get('list');
+                const list = candidate && candidate !== 'WL' && /^[A-Za-z0-9_-]{1,120}$/.test(candidate) ? candidate : null;
+                return ResumeManager.keyFor(id, list);
+            } catch { return null; }
+        },
+        render() {
+            if (!isYouTube || suspended) return;
+            for (const link of this.hosts) {
+                if (!settings.resumeEnabled || link.isConnected === false) {
+                    link.querySelector('.' + this.barClass)?.remove();
+                    link.classList.remove(this.hostClass);
+                    this.hosts.delete(link);
+                }
+            }
+            if (!settings.resumeEnabled) return;
+            const records = new Map();
+            for (const link of document.querySelectorAll(this.selector + ', a.' + this.hostClass)) {
+                const key = settings.resumeEnabled ? this.keyForLink(link.getAttribute('href')) : null;
+                if (key && !records.has(key)) records.set(key, ResumeManager.progress(key));
+                const saved = key && records.get(key);
+                let bar = link.querySelector('.' + this.barClass);
+                if (!saved) { bar?.remove(); link.classList.remove(this.hostClass); this.hosts.delete(link); continue; }
+                if (!bar) {
+                    bar = document.createElement('span');
+                    bar.className = this.barClass;
+                    bar.setAttribute('role', 'img');
+                    link.appendChild(bar);
+                    link.classList.add(this.hostClass);
+                }
+                this.hosts.add(link);
+                const percent = saved.completed ? 100 : Math.min(100, Math.round(saved.time / saved.duration * 100));
+                const label = saved.completed ? 'Playback Suite 已看完' : 'Playback Suite 續播進度 ' + percent + '%';
+                const signature = key + ':' + percent + ':' + saved.completed;
+                if (bar.dataset?.progressSignature === signature) continue;
+                bar.style.width = percent + '%';
+                bar.setAttribute('aria-label', label);
+                bar.setAttribute('title', label);
+                if (bar.dataset) bar.dataset.progressSignature = signature;
+            }
+            if (settings.resumeEnabled && !document.getElementById(APP + '-resume-style')) {
+                const style = document.createElement('style');
+                style.id = APP + '-resume-style';
+                style.textContent = `.${this.hostClass}{position:relative} .${this.barClass}{position:absolute;left:0;bottom:0;height:3px;background:#b38cff;z-index:2;pointer-events:none;border-radius:0 2px 2px 0}`;
+                document.head?.appendChild(style);
+            }
         }
     };
     function stateFor(video) {
@@ -1310,7 +1459,7 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
             ),
             panelRow(
                 '自動續播（YouTube）',
-                '僅於 YouTube 儲存觀看時間；此站可讀取瀏覽器內的進度資料',
+                '記住觀看時間、顯示縮圖進度並同步本機分頁；此站可讀取進度資料',
                 makeToggle(settings.resumeEnabled, value => {
                     settings.resumeEnabled = value;
                     saveSettings();
@@ -1319,6 +1468,7 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
                         ResumeManager.tryRestore(currentVideo);
                         ResumeManager.cleanup();
                     } else ResumeManager.detach();
+                    ResumeThumbnails.schedule();
                 })
             ),
             panelRow(
@@ -1404,6 +1554,8 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
             releaseTemporaryHold();
             restoreVideo(currentVideo);
             settings = structuredClone(DEFAULTS);
+            ResumeManager.detach();
+            ResumeThumbnails.schedule();
             channelSpeeds = {};
             saveSettings();
             saveChannelSpeeds();
@@ -2134,11 +2286,11 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
         refreshScheduled = true;
         requestAnimationFrame(() => {
             refreshScheduled = false;
-            if (!suspended) refreshActiveVideo();
+            if (!suspended) { refreshActiveVideo(); ResumeThumbnails.schedule(); }
         });
     }
     const observer = new MutationObserver(scheduleRefresh);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] });
     document.addEventListener('play', scheduleRefresh, true);
     document.addEventListener('playing', scheduleRefresh, true);
     window.addEventListener('scroll', scheduleRefresh, { passive: true, capture: true });
@@ -2166,6 +2318,7 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
     document.addEventListener('visibilitychange', () => { if (document.hidden) releaseTemporaryHold(); });
     window.addEventListener('pagehide', () => {
         ResumeManager.detach();
+        ResumeManager.stopSync();
         clearSponsorVisuals();
         restoreAdMute();
         document.getElementById(APP + '-cosmetic-ads')?.remove();
@@ -2181,7 +2334,9 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
     window.addEventListener('pageshow', () => {
         if (!suspended) return;
         suspended = false;
-        observer.observe(document.documentElement, { childList: true, subtree: true });
+        ResumeManager.startSync();
+        ResumeThumbnails.schedule();
+        observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] });
         watchdog = setInterval(tick, 800);
         refreshActiveVideo();
         applyCosmeticAdFiltering();
@@ -2193,6 +2348,8 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
     });
 
     ensureStyles();
+    ResumeManager.startSync();
+    ResumeThumbnails.schedule();
     applyCosmeticAdFiltering();
     bindVideo(getVideo());
     ensureControlButton();

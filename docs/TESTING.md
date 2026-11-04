@@ -1,3 +1,9 @@
+# 2026-11-04 續播縮圖／分頁同步候選
+
+本輪範圍、測試及未驗證項目見 [RESUME_SYNC_20261104.md](RESUME_SYNC_20261104.md)。`npm test` 現包含原 30 組與新增 22 組 production-function fixtures。新增 7 個 mutation 負控可用 `npm run test:resume-negative`；另備 `npm run test:resume-browser` 雙分頁 fixture，尚未執行。瀏覽器啟動受到 socket 權限限制，沒有重試或規避；不把合成通過當真站／Tampermonkey 驗收。
+
+---
+
 # 2026-11-02 收尾分支
 
 目前結果以 [COMPATIBILITY_20261102.md](COMPATIBILITY_20261102.md) 為準：Node v24.22.1，`npm test` 30 組（原 28 加設定／預設 2 組）、5 個 mutation 負控通過；新 notices 完整 MIT／來源連結受 static check 保護。Chromium 在 socket 初始化被環境限制阻擋，browser assertions 與視覺檢查未執行。真站／Tampermonkey／升級仍 NOT RUN。

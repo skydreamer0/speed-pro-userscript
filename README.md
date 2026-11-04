@@ -11,7 +11,7 @@ Playback Suite（原 Speed Pro）是一支單檔 Userscript，提供倍速、快
 ## 功能
 
 - **倍速控制**：按住快捷鍵暫時加速、鎖定倍率，或微調速度；設定範圍為 0.25×–16×，實際可用倍率受播放器限制。
-- **YouTube 續播**：選擇開啟後記錄觀看位置，一般影片與不同播放清單分開儲存。
+- **YouTube 續播**：選擇開啟後記錄觀看位置，一般影片與不同播放清單分開儲存；桌面版縮圖顯示進度與看完標記，同一瀏覽器的 YouTube 分頁會更新指示。
 - **YouTube SponsorBlock**：依社群資料略過贊助等片段，可選擇顯示標記；跳過後可透過提示返回。
 - **YouTube 廣告輔助**：點擊可見的原生略過按鈕、暫時靜音廣告，並可選擇隱藏已辨認的靜態廣告。
 - **子母畫面與 PNG 截圖**：透過快捷鍵或設定面板操作，能否使用取決於瀏覽器、影片來源與保護政策。
@@ -65,7 +65,7 @@ Playback Suite（原 Speed Pro）是一支單檔 Userscript，提供倍速、快
 | SponsorBlock 片段標記、靜態廣告隱藏 | 關閉 |
 | Bilibili SponsorBlock | 停用，即使設定開啟也不會執行 |
 
-續播會尊重網址的 `t`／`start` 時間、手動跳轉與已看完狀態。紀錄保留 90 天、最多約 2,000 筆，可在設定中清除。跨分頁寫入仍是最後寫入者覆蓋，尚無縮圖進度同步。
+續播會尊重網址的 `t`／`start` 時間、手動跳轉與已看完狀態。紀錄保留 90 天、最多約 2,000 筆，可在設定中清除。縮圖進度會隨同源分頁的儲存通知更新，不會改寫時間戳連結或跳動正在播放的影片。暫停、背景或返回舊分頁會對已觀察到的新進度退讓；但 localStorage 並非交易式鎖定，兩個活躍分頁同時寫入仍可能競爭。沒有跨瀏覽器、跨裝置或帳號同步；各已開啟分頁的設定開關仍各自保留。詳見[續播同步範圍與驗證](docs/RESUME_SYNC_20261104.md)。
 
 ## 支援範圍
 
@@ -73,7 +73,7 @@ Playback Suite（原 Speed Pro）是一支單檔 Userscript，提供倍速、快
 
 | 網站／頁面 | 目前範圍 |
 | --- | --- |
-| YouTube `www.youtube.com/watch` | 倍速、續播、SponsorBlock、廣告輔助與共用操作 |
+| YouTube `www.youtube.com/watch`；桌面站內影片縮圖 | 播放頁倍速、續播、SponsorBlock、廣告輔助與共用操作；支援的縮圖顯示續播進度 |
 | Bilibili `/video/BV…`、`/zh-Hant/video/BV…` | 實驗性倍速與共用操作；找不到已辨識的主影片就不控制 |
 | Facebook／Instagram／Threads | 既有倍速與共用操作；不提供續播、SponsorBlock 或廣告輔助 |
 | YouTube Music／手機版／外部嵌入頁 | 未納入匹配範圍 |
@@ -109,10 +109,11 @@ Bilibili 尚無通過驗證的實際媒體 CID adapter，因此 SponsorBlock **�
 
 ```sh
 npm test
+npm run test:resume-negative
 node scripts/repair-negative-test.mjs
 ```
 
-`npm test` 執行語法、metadata／文件檢查及 30 組 production-function 合成 fixture；第二個指令檢查 5 個防護負控。這些不等於瀏覽器、真站或管理器驗收。完整狀態見[測試說明](docs/TESTING.md)與[相容性紀錄](docs/COMPATIBILITY_20261102.md)。
+`npm test` 執行語法、metadata／文件檢查及 52 組 production-function 合成 fixture（原 30 組加續播同步 22 組）；另外兩個指令分別檢查 7 個續播負控與 5 個既有防護負控。這些不等於瀏覽器、真站或管理器驗收。完整狀態見[測試說明](docs/TESTING.md)與[相容性紀錄](docs/COMPATIBILITY_20261102.md)。
 
 [貢獻指南](CONTRIBUTING.md) · [變更紀錄](CHANGELOG.md) · [產品方向](docs/PRODUCT_DIRECTION.md) · [整合規格](docs/PLAYBACK_SUITE_2.0_SPEC.md)
 
