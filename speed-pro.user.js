@@ -326,8 +326,9 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
             if (!state || state.video !== video) return;
             if (Date.now() < state.ignoreOwnSeekUntil &&
                 Math.abs(Number(video.currentTime) - state.automaticSeekTarget) < 0.25) return;
-            // Explicit user/native player seeks must win over our initial restore.
-            if (video.currentTime > 1 || state.ctx.explicitTime) state.userSeeked = true;
+            // Any seek not owned by the coordinator wins, including a deliberate replay from 0.
+            // Our resume/sponsor seeks return above instead of becoming user intent.
+            state.userSeeked = true;
             state.localIntent = true;
 
         },
@@ -665,12 +666,46 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
     }
 
     function isInteractiveTarget(target) {
-        return isTypingTarget(target) || Boolean(target?.closest?.('button, a, [role="button"], [role="link"], [role="menuitem"], [role="option"]'));
+        return isTypingTarget(target) || Boolean(target?.closest?.('button, a, [role="button"], [role="link"], [role="menuitem"], [role="option"], [role="slider"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="treeitem"], [role="spinbutton"], summary'));
     }
 
     function ignoreInput(event) {
-        return event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey ||
+        return event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.getModifierState?.('AltGraph') ||
             (event.composedPath?.() || [event.target]).some(isInteractiveTarget);
+    }
+
+    // One YouTube-derived map supplies dispatch and visible help on every matched site.
+    // Native Tab/Enter remain a deliberate Bilibili exception, not a second key map.
+    const HOTKEYS = Object.freeze([
+        { code: 'Backquote', action: 'hold', label: 'Backquote（反引號）', description: '按住一般加速；放開還原' },
+        { code: 'Backquote', shift: true, action: 'turbo', label: 'Shift + Backquote', description: '按住超速倍率；放開還原' },
+        { code: 'PageUp', action: 'increase', label: 'PageUp', description: '增加設定的加速倍率一個步進' },
+        { code: 'PageDown', action: 'decrease', label: 'PageDown', description: '減少設定的加速倍率一個步進' },
+        ...[1, 2, 3, 4, 5].map(rate => ({ code: `Digit${rate}`, alt: true, action: 'preset', rate,
+            label: `Alt + ${rate}`, description: `套用 ${rate}×` })),
+        { code: 'Delete', action: 'preset', rate: 3, label: 'Delete', description: '套用 3×（不是重設設定）' },
+        { code: 'KeyS', alt: true, action: 'screenshot', label: 'Alt + S', description: 'PNG 截圖（依瀏覽器與影片支援）' },
+        { code: 'KeyP', alt: true, action: 'pip', label: 'Alt + P', description: '切換子母畫面（依瀏覽器支援）' },
+        { code: 'Tab', action: 'lock', nativeOnBilibili: true, label: 'Tab', description: '暫時加速中或已鎖定時切換鎖定' },
+        { code: 'Enter', action: 'fullscreen', nativeOnBilibili: true, label: 'Enter', description: '切換全螢幕（依瀏覽器與影片支援）' },
+    ].map(Object.freeze));
+
+    function availableHotkeys() {
+        return HOTKEYS.filter(key => !(isBilibili && key.nativeOnBilibili));
+    }
+
+    function matchHotkey(event) {
+        return availableHotkeys().find(key => key.code === event.code &&
+            Boolean(key.alt) === Boolean(event.altKey) && Boolean(key.shift) === Boolean(event.shiftKey));
+    }
+
+    function hotkeyHelpHTML() {
+        // Labels are static application text, never page content or user-supplied HTML.
+        return availableHotkeys().map(key => `<b>${key.label}</b> ${key.description}`).join('<br>') +
+            '<br><b>Alt + 滾輪</b> 垂直滾動調整加速倍率（依設定步進）' +
+            '<br>輸入、互動元件及未列出的組合鍵保留原生操作。' +
+            (isBilibili ? '<br>Bilibili：Tab／Enter 保留原生；在面板或浮動倍率按鈕鎖定。' :
+                '<br>Shift + Tab 保留焦點導航；一般 Tab 鎖定仍是舊版相容操作。');
     }
 
     function effectiveSpeed() {
@@ -770,6 +805,7 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
             return;
         }
         if (video !== currentVideo) bindVideo(video);
+        turboActive = false;
         if (!locked && !holdActive) {
             stateFor(video).baseline = video.playbackRate;
             locked = true;
@@ -1254,9 +1290,11 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
 
         controlButton.textContent = `${shownRate.toFixed(2).replace(/\.00$/, '').replace(/0$/, '')}×`;
         controlButton.dataset.locked = String(locked);
-        controlButton.title = currentVideo && stateFor(currentVideo).blocked ? '倍速衝突：已停止重試' : locked
-            ? `已鎖定 ${shownRate}×`
-            : `加速倍率 ${settings.speed}×`;
+        const action = isYouTube ? '開啟 Playback Suite 設定' : locked ? '解除倍速鎖定' : '鎖定加速倍率';
+        const state = currentVideo && stateFor(currentVideo).blocked ? '倍速衝突：已停止重試' : locked
+            ? `已鎖定 ${shownRate}×` : `加速倍率 ${settings.speed}×`;
+        controlButton.title = `${action}；目前 ${shownRate}×；${state}`;
+        controlButton.setAttribute('aria-label', controlButton.title);
     }
 
     function panelRow(title, subtitle, control) {
@@ -1371,9 +1409,7 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
             <div class="${APP}-section">
                 <div class="${APP}-section-title">快捷鍵</div>
                 <div class="${APP}-sub" style="line-height:1.8">
-                    <b>\`</b> 按住加速　<b>Shift+\`</b> 5×超速<br>
-                    ${isBilibili ? '點擊倍率按鈕鎖定（Tab／Enter／方向鍵保留原生）' : '<b>Tab</b> 鎖定'}　<b>Alt+滾輪</b> ±0.25×<br>
-                    <b>Alt+1～5</b> 快速設 1×～5×
+                    ${hotkeyHelpHTML()}
                 </div>
             </div>
         `;
@@ -2059,8 +2095,10 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
         releaseTemporaryHold();
         const previous = currentVideo;
         restoreAdMute();
-        MediaCoordinator.invalidate();
+        // Flush the old checkpoint while its generation is still valid. The save guard
+        // still rejects changed routes/sources and newer remote progress.
         unbindVideo();
+        MediaCoordinator.invalidate();
         currentVideo = null;
         // Restore the old controlled player before leaving it; previews are never touched.
         if (locked) restoreVideo(previous);
@@ -2151,104 +2189,59 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
         }, 450);
     }
 
+    function toggleFullscreen() {
+        // 已經全螢幕 → 離開
+        if (document.fullscreenElement) {
+            document.exitFullscreen?.();
+            return;
+        }
+
+        // YouTube 優先使用原生播放器按鈕
+        const youtubeFullscreen =
+              document.querySelector('.ytp-fullscreen-button');
+
+        if (youtubeFullscreen) {
+            youtubeFullscreen.click();
+            return;
+        }
+
+        // FB / IG / Threads：先全螢幕影片本體，失敗才退回播放器容器。
+        const video = getActiveVideo();
+        if (video) {
+            (async () => {
+                const targets = [video, video.parentElement, video.closest('[role="dialog"]')];
+                for (const target of targets) {
+                    if (!target?.requestFullscreen) continue;
+                    try {
+                        await target.requestFullscreen();
+                        return;
+                    } catch { /* 試下一個容器 */ }
+                }
+                showToast('這個 Reel 目前不允許全螢幕', { force: true });
+            })();
+        }
+    }
+
     document.addEventListener('keydown', event => {
         if (ignoreInput(event) || !getVideo()) return;
-        if (isBilibili && ['Tab', 'Enter'].includes(event.code)) return;
-
-        if (event.altKey && /^Digit[1-5]$/.test(event.code)) {
-            event.preventDefault();
-            const rate = Number(event.code.slice(-1));
-            setPreset(rate);
-            return;
-        }
-
-        if (event.altKey && event.code === 'KeyS') {
-            event.preventDefault();
-            takeScreenshot();
-            return;
-        }
-
-        if (event.altKey && event.code === 'KeyP') {
-            event.preventDefault();
-            togglePiP();
-            return;
-        }
-
-        switch (event.code) {
-            case 'Backquote': {
-                event.preventDefault();
-                if (event.repeat || locked) return;
-                startHold(event.shiftKey);
-                break;
-            }
-
-            case 'Tab': {
-                if (!holdActive && !locked) return;
-                event.preventDefault();
-                if (event.repeat) return;
-                toggleLock();
-                break;
-            }
-
-            case 'PageUp': {
-                event.preventDefault();
-                if (!event.repeat) adjustSpeed(settings.step);
-                break;
-            }
-
-            case 'PageDown': {
-                event.preventDefault();
-                if (!event.repeat) adjustSpeed(-settings.step);
-                break;
-            }
-
-            case 'Delete': {
-                event.preventDefault();
-                if (!event.repeat) setPreset(3);
-                break;
-            }
-            case 'Enter': {
-                // 不搶 Facebook 搜尋/按鈕/留言的 Enter 鍵與鍵盤無障礙操作。
-                if (isInteractiveTarget(event.target) || !getVideo()) return;
-                event.preventDefault();
-
-                if (event.repeat) return;
-
-                // 已經全螢幕 → 離開
-                if (document.fullscreenElement) {
-                    document.exitFullscreen?.();
-                    break;
-                }
-
-                // YouTube 優先使用原生播放器按鈕
-                const youtubeFullscreen =
-                      document.querySelector('.ytp-fullscreen-button');
-
-                if (youtubeFullscreen) {
-                    youtubeFullscreen.click();
-                    break;
-                }
-
-                // FB / IG / Threads：先全螢幕影片本體，失敗才退回播放器容器。
-                const video = getActiveVideo();
-                if (video) {
-                    (async () => {
-                        const targets = [video, video.parentElement, video.closest('[role="dialog"]')];
-                        for (const target of targets) {
-                            if (!target?.requestFullscreen) continue;
-                            try {
-                                await target.requestFullscreen();
-                                return;
-                            } catch { /* 試下一個容器 */ }
-                        }
-                        showToast('這個 Reel 目前不允許全螢幕', { force: true });
-                    })();
-                }
-                break;
-            }
-
-            default:
-                break;
+        const key = matchHotkey(event);
+        if (!key) return;
+        if (key.action === 'lock' && !holdActive && !locked) return;
+        if ((key.action === 'hold' || key.action === 'turbo') && locked) return;
+        event.preventDefault();
+        // Holding a key cannot repeatedly download screenshots, toggle PiP/fullscreen,
+        // rewrite settings, or turn a one-shot command into a different native action.
+        if (event.repeat) return;
+        switch (key.action) {
+            case 'hold': startHold(false); break;
+            case 'turbo': startHold(true); break;
+            case 'lock': toggleLock(); break;
+            case 'increase': adjustSpeed(settings.step); break;
+            case 'decrease': adjustSpeed(-settings.step); break;
+            case 'preset': setPreset(key.rate); break;
+            case 'screenshot': takeScreenshot(); break;
+            case 'pip': togglePiP(); break;
+            case 'fullscreen': toggleFullscreen(); break;
         }
     }, true);
 
@@ -2260,7 +2253,8 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
     }, true);
 
     document.addEventListener('wheel', event => {
-        if (!event.altKey || ignoreInput(event) || !getVideo()) return;
+        if (!event.altKey || event.shiftKey || ignoreInput(event) || !getVideo() ||
+            !Number.isFinite(event.deltaY) || event.deltaY === 0) return;
 
         event.preventDefault();
         adjustSpeed(event.deltaY < 0 ? settings.step : -settings.step);

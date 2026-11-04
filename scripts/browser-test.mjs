@@ -33,6 +33,9 @@ try {
   await p.locator('.yt-speed-pro-close').click(); await p.click(button); assert.equal(await p.locator('#yt-speed-pro-panel').isVisible(),true);
   await p.locator('.yt-speed-pro-close').click();
   await key(p,'Digit2','body',{altKey:true}); assert.equal(await p.locator('#main').evaluate(v=>v.playbackRate),2);
+  assert.equal(await key(p,'Tab','body',{shiftKey:true}),false,'Shift+Tab keeps native focus navigation');
+  assert.equal(await key(p,'Enter','body',{altKey:true}),false,'Alt+Enter does not fall through to fullscreen');
+  assert.equal(await key(p,'PageUp','body',{shiftKey:true}),false,'unlisted modified shortcut stays native');
   if(host!=='www.youtube.com') assert.equal(await p.evaluate(()=>requests.length),0);
   await p.close(); checks++; console.log(`PASS ${host} settings open/reset/close/reopen and rate control`);
  }

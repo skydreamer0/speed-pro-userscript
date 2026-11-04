@@ -1,3 +1,11 @@
+## Unreleased — 2026-11-04 unified shortcut dispatch and resume lifecycle
+
+- Use one YouTube-derived shortcut map for every matched host and the full in-panel help. Keep the explicit Bilibili native Tab/Enter exception; no unapproved new key bindings.
+- Match modifier combinations exactly, preserve Shift+Tab/AltGraph/ARIA widget input, suppress one-shot key repeat, and ignore zero/nonfinite or shifted Alt-wheel motion.
+- Make an explicit rate command during held turbo take precedence until the owned hold is released. Button tooltips and accessible names retain the actual settings/lock action.
+- Save the final valid old-player checkpoint before replacement invalidation; preserve route/source/remote-write guards. Manual replay to 0–1 seconds wins over pending resume; coordinator-owned seeks remain automatic.
+- Add dispatch/lifecycle regression groups and mutation controls. No permission, version, storage-key, default, publication or real-site acceptance change.
+
 ## Unreleased — 2026-11-04 resume indicators and tab updates
 
 - Add opt-in desktop YouTube thumbnail progress indicators, including distinct playlist checkpoints and completed state, without rewriting thumbnail URLs.

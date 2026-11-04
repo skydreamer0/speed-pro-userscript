@@ -41,9 +41,9 @@ Playback Suite（原 Speed Pro）是一支單檔 Userscript，提供倍速、快
 | --- | --- |
 | 按住 Backquote（反引號） | 暫用一般加速倍率，放開回復該影片的基準倍率 |
 | 按住 Shift + Backquote | 暫用超速倍率，放開回復基準倍率 |
-| PageUp／PageDown | 每次增加／減少 0.25× |
+| PageUp／PageDown | 增加／減少「加速倍率」，依設定步進（預設 0.25×） |
 | Alt + 1–5 | 套用 1–5× |
-| Alt + 滾輪 | 增加／減少倍率 |
+| Alt + 垂直滾輪 | 增加／減少加速倍率，依設定步進 |
 | Delete | 套用 3× |
 | Alt + S／Alt + P | PNG 截圖／切換子母畫面 |
 | Tab | 非 Bilibili：在暫時加速或鎖定時切換鎖定狀態 |
@@ -51,7 +51,9 @@ Playback Suite（原 Speed Pro）是一支單檔 Userscript，提供倍速、快
 
 一般加速倍率預設 **3×**，超速倍率預設 **5×**，可在設定中調整。Bilibili 的 Tab、Enter 與方向鍵保留原生操作，使用浮動倍率按鈕鎖定／解除；YouTube 的倍率按鈕用於開啟設定。
 
-快捷鍵會避開輸入與互動元素；非 Bilibili 頁面在加速時仍可能影響 Tab 導覽。播放器若持續重設倍率，最多校正三次後停止重試，需明確重新選擇倍率才會再嘗試。
+所有匹配網站從同一張快捷鍵表產生操作與面板說明；只有 Bilibili 的 Tab／Enter 保留原生。未列出的修飾鍵組合、Shift + Tab、IME 與輸入／互動元件不攔截。非 Bilibili 的普通 Tab 鎖定仍沿用舊行為，可能影響加速中的焦點導航，尚未擅自改成新鍵。播放器若持續重設倍率，最多校正三次後停止重試，需明確重新選擇倍率才會再嘗試。
+
+PageUp／PageDown 調整的是儲存的「加速倍率」，不是直接在目前原生倍率上加減。例如目前影片 1×、加速設定 3×，PageUp 會套用 3.25×。超速按住期間若明確選擇新倍率，新倍率優先，放開反引號仍回到原先基準。完整跨站對照與驗證見[快捷鍵一致性修正](docs/HOTKEYS_20261104.md)。
 
 ### 預設開關
 
@@ -111,9 +113,11 @@ Bilibili 尚無通過驗證的實際媒體 CID adapter，因此 SponsorBlock **�
 npm test
 npm run test:resume-negative
 node scripts/repair-negative-test.mjs
+npm run test:hotkeys-negative
+npm run test:resume-lifecycle-negative
 ```
 
-`npm test` 執行語法、metadata／文件檢查及 52 組 production-function 合成 fixture（原 30 組加續播同步 22 組）；另外兩個指令分別檢查 7 個續播負控與 5 個既有防護負控。這些不等於瀏覽器、真站或管理器驗收。完整狀態見[測試說明](docs/TESTING.md)與[相容性紀錄](docs/COMPATIBILITY_20261102.md)。
+`npm test` 執行語法、metadata／文件檢查及 69 組合成 fixture（原 30 組、續播同步 22 組、實際快捷鍵事件處理器 13 組、續播生命週期 4 組）；另外四個指令分別檢查 7 個續播、5 個既有防護、6 個快捷鍵及 2 個生命週期負控。這些不等於瀏覽器、真站或管理器驗收。完整狀態見[測試說明](docs/TESTING.md)與[相容性紀錄](docs/COMPATIBILITY_20261102.md)。
 
 [貢獻指南](CONTRIBUTING.md) · [變更紀錄](CHANGELOG.md) · [產品方向](docs/PRODUCT_DIRECTION.md) · [整合規格](docs/PLAYBACK_SUITE_2.0_SPEC.md)
 

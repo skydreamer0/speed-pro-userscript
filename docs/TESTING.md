@@ -1,3 +1,11 @@
+# 2026-11-04 快捷鍵一致性與續播生命週期候選
+
+`npm test` 包含 69 組：原 30、續播同步 22、快捷鍵事件 13、生命週期 4。快捷鍵 VM 會註冊並派送正式碼的 keydown／keyup／wheel，而非複製派送演算法；媒體與瀏覽器 API 仍為替身。`npm run test:hotkeys-negative` 有 6 個行為負控；`npm run test:resume-lifecycle-negative` 有 2 個。既有 7＋5 負控亦保留。
+
+目前規格、差異、基準失敗與尚未決定的 Tab／Enter 遷移見 [HOTKEYS_20261104.md](HOTKEYS_20261104.md)。完整 DOM fixture 補了修飾鍵斷言，但先前瀏覽器啟動權限限制未解除，因此本輪不重試也不宣稱通過。真站／Tampermonkey／鍵盤配置與平台原生快捷鍵共存仍 NOT RUN。
+
+---
+
 # 2026-11-04 續播縮圖／分頁同步候選
 
 本輪範圍、測試及未驗證項目見 [RESUME_SYNC_20261104.md](RESUME_SYNC_20261104.md)。`npm test` 現包含原 30 組與新增 22 組 production-function fixtures。新增 7 個 mutation 負控可用 `npm run test:resume-negative`；另備 `npm run test:resume-browser` 雙分頁 fixture，尚未執行。瀏覽器啟動受到 socket 權限限制，沒有重試或規避；不把合成通過當真站／Tampermonkey 驗收。

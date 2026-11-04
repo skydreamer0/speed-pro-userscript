@@ -8,9 +8,11 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --check speed-pro.user.js && node scripts/check.mjs && node scripts/runtime-test.mjs && node scripts/resume-sync-test.mjs",
+    "test": "node --check speed-pro.user.js && node scripts/check.mjs && node scripts/runtime-test.mjs && node scripts/resume-sync-test.mjs && node scripts/hotkeys-test.mjs && node scripts/resume-lifecycle-test.mjs",
     "test:browser": "node scripts/browser-test.mjs",
     "test:resume-browser": "node scripts/resume-browser-test.mjs",
-    "test:resume-negative": "node scripts/resume-negative-test.mjs"
+    "test:resume-negative": "node scripts/resume-negative-test.mjs",
+    "test:hotkeys-negative": "node scripts/hotkeys-negative-test.mjs",
+    "test:resume-lifecycle-negative": "node scripts/resume-lifecycle-negative-test.mjs"
   }
 }
