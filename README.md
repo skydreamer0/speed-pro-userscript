@@ -1,69 +1,123 @@
-# Playback Suite｜跨平台影片播放助手
+# Playback Suite
 
-> **2026-11-02 來源通知／相容性收尾已透過 PR #12 合入 main**，下方 main 安裝入口已包含這批變更；尚未更新 Greasy Fork 或建立 GitHub Release，也不表示安裝／升級已驗收。
+**在 YouTube、Bilibili 與社群網站，用同一套操作控制影片播放。**
 
-**2.0.0 候選版 / MIT / 單檔 Userscript**  
-由 Speed Pro 擴充而成：倍速、YouTube 自動續播、YouTube SponsorBlock、可選靜態廣告隱藏、PiP 與 PNG 截圖。
+Playback Suite（原 Speed Pro）是一支單檔 Userscript，提供倍速、快捷鍵、子母畫面與截圖，並整合 YouTube 續播和 SponsorBlock。
 
-> **2.0.0 整合候選，尚未完成真站驗收**：本版包含原 #4–#8 堆疊及 #10 安全修復，以單一整合 PR 納入 main，不先合入已知有缺口的中間版本。main Raw 是跟隨原碼更新的安裝通道，不是已驗收的穩定版；沒有建立 GitHub Release。Node／CI 通過不代表真網站或 Tampermonkey 安裝、升級及重複腳本驗收通過。
+[安裝](#安裝) · [使用方式](#使用方式) · [支援範圍](#支援範圍) · [常見問題](#常見問題) · [回報問題](https://github.com/skydreamer0/speed-pro-userscript/issues)
 
-## 功能與支援範圍
+> **目前為 2.0.0 候選版。** main 已包含來源通知與相容性修正，但尚未完成真實網站、Tampermonkey 安裝及升級驗收。下方安裝入口會跟隨 main 原碼更新，不是已驗收的穩定版；尚未建立 GitHub Release，這批變更也未發布至 Greasy Fork。
 
-| 網站 | 倍速 / 快捷鍵 | 自動續播 | SponsorBlock | 廣告處理 |
-|---|---|---|---|---|
-| YouTube www（watch） | 既有功能 | **可選；預設關閉** | 既有功能擴充，雜湊查詢、可選標記 | 原生略過／靜音；可選靜態廣告 CSS |
-| Bilibili www /video、/zh-Hant/video | 實驗性 | 未支援 | **目前不可用：未驗證 active-media CID adapter，零請求／跳段／標記** | 未支援 |
-| Facebook / Instagram / Threads | 既有共用控制 | 未支援 | 未支援 | 未支援 |
-| YouTube Music／手機版／嵌入頁 | **未納入本版匹配** | 未支援 | 未支援 | 未支援 |
+## 功能
 
-Bilibili 主影片找不到即不控制。Bilibili 番劇／直播不在範圍；不繞過登入、付費或 DRM。廣告輔助不保證 100% 無廣告。
+- **倍速控制**：按住快捷鍵暫時加速、鎖定倍率，或微調速度；設定範圍為 0.25×–16×，實際可用倍率受播放器限制。
+- **YouTube 續播**：選擇開啟後記錄觀看位置，一般影片與不同播放清單分開儲存。
+- **YouTube SponsorBlock**：依社群資料略過贊助等片段，可選擇顯示標記；跳過後可透過提示返回。
+- **YouTube 廣告輔助**：點擊可見的原生略過按鈕、暫時靜音廣告，並可選擇隱藏已辨認的靜態廣告。
+- **子母畫面與 PNG 截圖**：透過快捷鍵或設定面板操作，能否使用取決於瀏覽器、影片來源與保護政策。
 
-## 操作
+## 安裝
+
+需要可執行 Userscript 的瀏覽器與腳本管理器。以下以 [Tampermonkey](https://www.tampermonkey.net/) 為例；各瀏覽器與管理器組合仍待實測。
+
+1. 安裝 Tampermonkey。Chrome／Edge 若提示腳本無法執行，請依[官方權限說明](https://www.tampermonkey.net/faq.php?q=Q209)設定。
+2. 開啟 **[安裝 Playback Suite 候選版（main）](https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js)**，在管理器中確認來源、權限與內容後安裝。
+3. 若曾安裝 Speed Pro，確認管理器中只啟用一份腳本，再重新整理影片頁面。
+4. 在 YouTube 播放器控制列點擊倍率按鈕開啟設定；其他匹配網站使用浮動控制列的 **⚙**。
+
+安裝使用者不需要 Node.js、npm 或建置步驟。若連結只顯示原始碼，請參考 [Tampermonkey 安裝說明](https://www.tampermonkey.net/faq.php?q=Q102)。
+
+### 從 Speed Pro 更新
+
+顯示名稱已改為 Playback Suite，但儲存庫名稱、`speed-pro.user.js` 檔名、`@namespace`、`@downloadURL` 與 `@updateURL` 保持不變。部分管理器可能因改名建立新副本，**不能假設會自動取代舊腳本**；若出現兩份，先停用舊副本，避免重複控制。
+
+既有設定鍵保留，不做破壞性遷移。更新來源指向 main，更新檢查依管理器設定；目前沒有獨立的穩定發行通道。
+
+## 使用方式
+
+### 快捷鍵
 
 | 操作 | 效果 |
-|---|---|
-| 按住 Backquote（`） | 暫用一般倍率，放開回復該影片基準倍率 |
-| Shift + Backquote | 暫時啟用超速倍率 |
-| 浮動倍率鈕 | 鎖定／解除；YouTube 按鈕用於開啟設定 |
-| PageUp／PageDown | 每次 ±0.25× |
+| --- | --- |
+| 按住 Backquote（反引號） | 暫用一般加速倍率，放開回復該影片的基準倍率 |
+| 按住 Shift + Backquote | 暫用超速倍率，放開回復基準倍率 |
+| PageUp／PageDown | 每次增加／減少 0.25× |
 | Alt + 1–5 | 套用 1–5× |
-| Alt + 滾輪 | 加減倍率 |
-| Alt + S／Alt + P | PNG 截圖／子母畫面（視瀏覽器支援） |
-| Tab／Enter | Bilibili 保留原生；其他網站沿用既有條件式快捷鍵 |
+| Alt + 滾輪 | 增加／減少倍率 |
+| Delete | 套用 3× |
+| Alt + S／Alt + P | PNG 截圖／切換子母畫面 |
+| Tab | 非 Bilibili：在暫時加速或鎖定時切換鎖定狀態 |
+| Enter | 非 Bilibili：符合焦點條件時切換全螢幕 |
 
-控制範圍 0.25×–16×，不保證每個平台都接受。若播放器持續重設倍率，最多校正三次後停止重試，直到明確重新選倍率。
+一般加速倍率預設 **3×**，超速倍率預設 **5×**，可在設定中調整。Bilibili 的 Tab、Enter 與方向鍵保留原生操作，使用浮動倍率按鈕鎖定／解除；YouTube 的倍率按鈕用於開啟設定。
 
-## 續播與 SponsorBlock
+快捷鍵會避開輸入與互動元素；非 Bilibili 頁面在加速時仍可能影響 Tab 導覽。播放器若持續重設倍率，最多校正三次後停止重試，需明確重新選擇倍率才會再嘗試。
 
-**續播（關閉為預設）**：YouTube watch 頁面記錄影片時間；同一影片在一般播放與特定 playlist 中分開儲存。明確網址 `t`／`start`、手動尋找時間點與已看完影片優先；資料 90 天過期，最多保留約 2,000 筆。另有清除續播紀錄按鈕。播放清單上次影片跳轉是額外可關閉的實驗功能。
+### 預設開關
 
-**SponsorBlock**：YouTube 原有功能擴充為 SHA-256 前四碼查詢與片段標記；Bilibili 跳段目前停用，即使設定開啟也不送請求、不跳段、不畫標記；URL／初始頁面 CID 不能證明實際影片身分，待真站驗證的 adapter 才能啟用。全片分類只顯示標籤，不直接跳掉整片；片段可透過提示按鈕返回。資料來自社群標記，可能有錯誤，隨時可關閉。
+以下是新設定的預設值；既有安裝會保留已儲存的選擇。
 
-**廣告**：原生略過與廣告靜音**預設開啟**，可分別關閉；不是純手動控制。只在 YouTube 明確進入 ad-showing 狀態時點擊可見的原生略過按鈕或暫時靜音。新增 CSS 預設關閉，只隱藏已辨認的靜態廣告元素；**不會快轉整段廣告到影片結尾、強制播放或任意移除彈窗**。
+| 功能 | 預設 |
+| --- | --- |
+| YouTube SponsorBlock | 開啟 |
+| 原生廣告略過、廣告靜音 | 開啟，可分別關閉 |
+| YouTube 續播、實驗性播放清單上次影片跳轉 | 關閉 |
+| SponsorBlock 片段標記、靜態廣告隱藏 | 關閉 |
+| Bilibili SponsorBlock | 停用，即使設定開啟也不會執行 |
 
-## 安裝、更新與改名
+續播會尊重網址的 `t`／`start` 時間、手動跳轉與已看完狀態。紀錄保留 90 天、最多約 2,000 筆，可在設定中清除。跨分頁寫入仍是最後寫入者覆蓋，尚無縮圖進度同步。
 
-候選安裝來源（**跟隨 main 原碼更新，安裝前請先確認以下限制**）：[speed-pro.user.js Raw](https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js)。
+## 支援範圍
 
-本候選版顯示名稱為 **Playback Suite**、套件名稱為 playback-suite-userscript；為了維持更新，原始 `@namespace`、原始檔名、`@downloadURL` 與 `@updateURL` **暫不改動**。既有 Speed Pro 可能因 `@name` 改變被管理器視為新腳本。正式升級前需檢查只啟用一份，必要時先停用舊副本，絕不預設可無痛自動遷移。GitHub 儲存庫名稱也**尚未更改**。
+下表描述目前原碼的功能範圍，**不代表已通過真站驗收**。
+
+| 網站／頁面 | 目前範圍 |
+| --- | --- |
+| YouTube `www.youtube.com/watch` | 倍速、續播、SponsorBlock、廣告輔助與共用操作 |
+| Bilibili `/video/BV…`、`/zh-Hant/video/BV…` | 實驗性倍速與共用操作；找不到已辨識的主影片就不控制 |
+| Facebook／Instagram／Threads | 既有倍速與共用操作；不提供續播、SponsorBlock 或廣告輔助 |
+| YouTube Music／手機版／外部嵌入頁 | 未納入匹配範圍 |
+| Bilibili 番劇／直播／AV 路徑 | 不在支援範圍 |
+
+Bilibili 尚無通過驗證的實際媒體 CID adapter，因此 SponsorBlock **不送請求、不跳段、不畫標記**。YouTube 同一播放器換片時，若無法確認網址與媒體已對齊，也會停止續播及 SponsorBlock，避免操作錯誤影片。
 
 ## 隱私與權限
 
-- 此修復只新增窄範圍 `@match https://www.bilibili.com/zh-Hant/video/*`，沒有新增 grants、connect 或 require。既有候選版保留 `@connect bsbsb.top`（目前不請求），原有 SponsorBlock 網域為 `sponsor.ajay.app`；`GM_xmlhttpRequest` 仍是唯一宣告的 grant，沒有遠端 `@require` 或程式碼下載執行。
-- **YouTube** SponsorBlock 使用影片 ID 的 SHA-256 前四碼查詢，回傳桶內須符合完整影片 ID。Bilibili 目前沒有網路請求。外部服務仍能看見 IP 等一般連線資訊；雜湊前綴不是完全匿名。
-- **續播資料存在 YouTube 網頁的 localStorage**，前綴 `yt-speed-pro:resume:v1:`，同源網頁腳本可能讀取。這不是私有／加密 GM 儲存。預設關閉；開啟前請自行衡量。
-- 舊的 `yt-speed-pro:settings` 與 `yt-speed-pro:channels` 保留，不做破壞性遷移。不同網域無跨站同步；沒有分析追蹤或外部帳號同步。
-- Bilibili 的缺口已採安全停用處理，不等於 SponsorBlock 功能已完成。語系網址倍速僅合成測試通過，真站與管理器仍為 NOT_VERIFIED。
-- 同節點換片若沒有新的可識別媒體來源，YouTube 續播／SponsorBlock 會保守停止，不猜測網址與媒體已對齊。
+- **本機資料**：設定與 YouTube 續播紀錄使用網站的 `localStorage`。續播鍵前綴為 `yt-speed-pro:resume:v1:`；同源網頁腳本可能讀取，不是私有或加密的 GM 儲存。既有 `yt-speed-pro:settings` 與 `yt-speed-pro:channels` 保留，不同網域不會同步。
+- **外部連線**：YouTube SponsorBlock 向 `sponsor.ajay.app` 查詢影片 ID 的 SHA-256 前四碼，再核對回傳的完整 ID。服務仍可看到 IP 等連線資訊，雜湊前綴不等於匿名。沒有分析追蹤或外部帳號同步。
+- **宣告權限**：唯一 grant 為 `GM_xmlhttpRequest`；`@connect` 包含 `sponsor.ajay.app` 與目前未使用的 `bsbsb.top`。沒有遠端 `@require`、遠端程式碼載入或 runtime npm 相依。
 
-## 來源、資料與使用邊界
+## 常見問題
 
-本程式碼採 MIT；不代表第三方 API／資料也採 MIT。YouTube 使用 [SponsorBlock](https://sponsor.ajay.app/) 社群資料，其 [API／資料條款](https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License) 為 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)，另有明確許可者除外。SponsorBlock 擴充程式的 GPL 與 API／資料條款不同；本案沒有載入該擴充程式。商業整合／資料再散布須先核對適用條件，不能以本案 MIT 覆蓋。
+**為什麼沒有自動續播？**  
+預設未開啟，請先在 YouTube watch 頁面的設定開啟。網址指定時間、手動跳轉、已看完影片或無法確認目前媒體時，不會強行恢復舊位置。
 
-設計參考、固定上游 license、1.1.0 匯入前史待查項與平台條款風險，見 [來源紀錄](docs/PROVENANCE.md)及[第三方通知](docs/THIRD_PARTY_NOTICES.md)。有致謝不等於所有來源與法律風險已驗證；保守廣告輔助也不代表平台授權。來源連結由使用者點擊才開啟，沒有為顯示通知下載遠端程式或素材。
+**能完全擋住廣告嗎？**  
+不能。略過與靜音只在 YouTube 明確進入廣告狀態時運作；靜態廣告隱藏另需開啟。不會快轉整段廣告到結尾、強制播放或任意移除彈窗，也不繞過登入、付費或 DRM。
 
-## 測試與限制
+**SponsorBlock 跳錯了怎麼辦？**  
+使用提示中的返回按鈕，或在設定關閉該功能。社群片段可能缺漏或誤標；全片分類只顯示標籤，不會直接跳掉整部影片。
 
-`npm test`：Node >=18，沒有 npm 相依；本收尾分支執行語法、metadata／notice 與 30 組 production-function 合成 fixture（原 28 組加設定相容性／預設值 2 組）；`node scripts/repair-negative-test.mjs` 驗證 5 個故意破壞防護的負控會失敗。獨立評審另驗 9 組，原整合 head 的 CI 記錄在 [PR #10](https://github.com/skydreamer0/speed-pro-userscript/pull/10)。**尚未**完成真 YouTube／Bilibili／FB／IG／Threads、Tampermonkey 及完整 DOM browser 驗收；Bilibili 跳段保持停用，續播跨分頁競態、同 source SPA 可用性及進度縮圖同步仍有限制。原碼合併不代表發布或真站驗收完成。
+**截圖或子母畫面無法使用？**  
+瀏覽器支援、使用者操作要求、跨來源限制與受保護影片都可能影響結果。請確認目前有可控制的主影片，並查看[已知限制](docs/KNOWN_ISSUES.md)。
 
-[本輪相容性證據](docs/COMPATIBILITY_20261102.md) · [產品改善順序](docs/PRODUCT_DIRECTION.md) · [整合 SPEC](docs/PLAYBACK_SUITE_2.0_SPEC.md) · [原 Bilibili SPEC](SPEC.md) · [測試](docs/TESTING.md) · [已知限制](docs/KNOWN_ISSUES.md) · [來源與授權](docs/PROVENANCE.md) · [變更](CHANGELOG.md) · [安全](SECURITY.md) · [貢獻](CONTRIBUTING.md)
+## 回報與開發
+
+請先查看[已知限制](docs/KNOWN_ISSUES.md)，再[建立 Issue](https://github.com/skydreamer0/speed-pro-userscript/issues/new/choose)，附上腳本、瀏覽器、管理器版本、頁面類型與重現步驟。移除帳號、私人影片連結、Cookie 和 token；安全漏洞請依 [SECURITY.md](SECURITY.md) 回報。
+
+開發檢查需要 **Node.js 18 以上**，沒有 npm 相依套件：
+
+```sh
+npm test
+node scripts/repair-negative-test.mjs
+```
+
+`npm test` 執行語法、metadata／文件檢查及 30 組 production-function 合成 fixture；第二個指令檢查 5 個防護負控。這些不等於瀏覽器、真站或管理器驗收。完整狀態見[測試說明](docs/TESTING.md)與[相容性紀錄](docs/COMPATIBILITY_20261102.md)。
+
+[貢獻指南](CONTRIBUTING.md) · [變更紀錄](CHANGELOG.md) · [產品方向](docs/PRODUCT_DIRECTION.md) · [整合規格](docs/PLAYBACK_SUITE_2.0_SPEC.md)
+
+## 授權與致謝
+
+本專案程式碼採用 [MIT License](LICENSE)。SponsorBlock 社群資料依其 [API／資料條款](https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License)使用，授權為 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)，另有明確許可者除外；不因本專案採 MIT 而變更。其擴充程式的 GPL 授權與 API／資料條款不同，本腳本未載入該擴充程式。
+
+設計參考與來源待查項目見[來源紀錄](docs/PROVENANCE.md)及[第三方通知](docs/THIRD_PARTY_NOTICES.md)。商業整合或資料再散布須另核適用條件；開源授權與致謝不代表各平台允許所有使用方式。
