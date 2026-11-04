@@ -1,3 +1,11 @@
+## Unreleased — 2026-11-04 resume indicators and tab updates
+
+- Add opt-in desktop YouTube thumbnail progress indicators, including distinct playlist checkpoints and completed state, without rewriting thumbnail URLs.
+- Refresh indicators on saved progress, same-origin storage events and recycled thumbnail links. Remote progress never seeks the current video.
+- Prevent observed newer cross-tab progress or history deletion from being overwritten by stationary paused/background sessions; deliberate visible playback and explicit local seeks can continue saving. Simultaneous writes remain nontransactional.
+- Preserve 2.0.0 candidate metadata, opt-in defaults, timestamp/manual-seek precedence, MIT notices, storage keys and permissions. No release, installation or deployment is implied.
+- Add production-function fixtures, mutation checks and a prepared two-tab browser fixture. Browser/live-site validation remains separately reported.
+
 ## Unreleased — 來源通知與相容性收尾（2026-11-02）
 
 - 單檔保留完整專案 MIT notice，YouTube 面板增加 SponsorBlock 資料來源／CC BY-NC-SA 4.0 與預設功能、外連及 localStorage 說明。

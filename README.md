@@ -67,3 +67,9 @@ Bilibili 主影片找不到即不控制。Bilibili 番劇／直播不在範圍�
 `npm test`：Node >=18，沒有 npm 相依；本收尾分支執行語法、metadata／notice 與 30 組 production-function 合成 fixture（原 28 組加設定相容性／預設值 2 組）；`node scripts/repair-negative-test.mjs` 驗證 5 個故意破壞防護的負控會失敗。獨立評審另驗 9 組，原整合 head 的 CI 記錄在 [PR #10](https://github.com/skydreamer0/speed-pro-userscript/pull/10)。**尚未**完成真 YouTube／Bilibili／FB／IG／Threads、Tampermonkey 及完整 DOM browser 驗收；Bilibili 跳段保持停用，續播跨分頁競態、同 source SPA 可用性及進度縮圖同步仍有限制。原碼合併不代表發布或真站驗收完成。
 
 [本輪相容性證據](docs/COMPATIBILITY_20261102.md) · [產品改善順序](docs/PRODUCT_DIRECTION.md) · [整合 SPEC](docs/PLAYBACK_SUITE_2.0_SPEC.md) · [原 Bilibili SPEC](SPEC.md) · [測試](docs/TESTING.md) · [已知限制](docs/KNOWN_ISSUES.md) · [來源與授權](docs/PROVENANCE.md) · [變更](CHANGELOG.md) · [安全](SECURITY.md) · [貢獻](CONTRIBUTING.md)
+
+### 2026-11-04 續播候選增補
+
+啟用「自動續播（YouTube）」後，桌面版影片縮圖會顯示本機已保存的進度，同一瀏覽器的 YouTube 分頁也會更新指示。播放清單與單片紀錄分開；不改縮圖網址、不蓋掉指定時間戳或手動拖曳、不因其他分頁更新而跳轉正在播放的影片。
+
+仍使用原有、YouTube 網頁可讀取的 localStorage，沒有新增權限、外部依賴或帳號同步。暫停／背景分頁對已觀察到的新進度會退讓，但這不是交易式鎖定。詳見 [範圍與驗證](docs/RESUME_SYNC_20261104.md)；候選合成測試不等於真站／Tampermonkey 驗收。
