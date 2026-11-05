@@ -1,3 +1,10 @@
+## 2.0.1 — 對齊 GitHub 與 Greasy Fork 候選版（2026-11-05）
+
+- 將 GitHub 腳本 `@version` 與 `package.json` 統一為 2.0.1，與 [Greasy Fork 已發布候選版](https://greasyfork.org/en/scripts/603328-playback-suite-cross-platform-video-companion) 一致；同步安裝與版本說明。
+- GitHub 保留原 Raw `@updateURL`／`@downloadURL`；Greasy Fork 保留自己的更新管道。
+- 程式本體與 main `5ff8456af7a0c21cd8f88c8804d828ea61197c9c` 相同，包含下列 2026-11-04 續播同步與 2026-11-02 來源通知變更；本次不加入字幕、快捷鍵候選或其他功能。
+- 未建立 GitHub Release；仍為候選版，不表示已完成真站或 Tampermonkey 安裝／升級驗收。下列 Unreleased 標題保留原開發階段的歷史紀錄。
+
 ## Unreleased — 2026-11-04 resume indicators and tab updates
 
 - Add opt-in desktop YouTube thumbnail progress indicators, including distinct playlist checkpoints and completed state, without rewriting thumbnail URLs.

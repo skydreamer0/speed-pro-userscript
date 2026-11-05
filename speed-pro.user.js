@@ -2,7 +2,7 @@
 // @name         Playback Suite - Cross-platform Video Companion
 // @name:zh-TW   Playback Suite｜跨站影片播放助手
 // @namespace    george.youtube.speedpro
-// @version      2.0.0
+// @version      2.0.1
 // @updateURL    https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @downloadURL  https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @license      MIT

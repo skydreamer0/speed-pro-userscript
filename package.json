@@ -1,6 +1,6 @@
 {
   "name": "playback-suite-userscript",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "Cross-platform playback companion: speed, optional YouTube resume, sponsor skips and conservative ad assist",
   "license": "MIT",

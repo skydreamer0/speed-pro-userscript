@@ -6,7 +6,7 @@ Playback Suite（原 Speed Pro）是一支單檔 Userscript，提供倍速、快
 
 [安裝](#安裝) · [使用方式](#使用方式) · [支援範圍](#支援範圍) · [常見問題](#常見問題) · [回報問題](https://github.com/skydreamer0/speed-pro-userscript/issues)
 
-> **目前為 2.0.0 候選版。** main 已包含來源通知與相容性修正，但尚未完成真實網站、Tampermonkey 安裝及升級驗收。下方安裝入口會跟隨 main 原碼更新，不是已驗收的穩定版；尚未建立 GitHub Release，這批變更也未發布至 Greasy Fork。
+> **目前為 2.0.1 候選版。** GitHub main 與 [Greasy Fork](https://greasyfork.org/en/scripts/603328-playback-suite-cross-platform-video-companion) 使用相同版本與程式本體，各自保留原更新管道。尚未完成真實網站、Tampermonkey 安裝及升級驗收，也尚未建立 GitHub Release；發布候選版不代表已驗收的穩定版。
 
 ## 功能
 
@@ -21,7 +21,7 @@ Playback Suite（原 Speed Pro）是一支單檔 Userscript，提供倍速、快
 需要可執行 Userscript 的瀏覽器與腳本管理器。以下以 [Tampermonkey](https://www.tampermonkey.net/) 為例；各瀏覽器與管理器組合仍待實測。
 
 1. 安裝 Tampermonkey。Chrome／Edge 若提示腳本無法執行，請依[官方權限說明](https://www.tampermonkey.net/faq.php?q=Q209)設定。
-2. 開啟 **[安裝 Playback Suite 候選版（main）](https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js)**，在管理器中確認來源、權限與內容後安裝。
+2. 選擇 **[GitHub main 候選版](https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js)** 或 **[Greasy Fork 候選版](https://greasyfork.org/en/scripts/603328-playback-suite-cross-platform-video-companion)**，在管理器中確認來源、權限與內容後安裝；只需選擇一個管道。
 3. 若曾安裝 Speed Pro，確認管理器中只啟用一份腳本，再重新整理影片頁面。
 4. 在 YouTube 播放器控制列點擊倍率按鈕開啟設定；其他匹配網站使用浮動控制列的 **⚙**。
 
@@ -29,9 +29,9 @@ Playback Suite（原 Speed Pro）是一支單檔 Userscript，提供倍速、快
 
 ### 從 Speed Pro 更新
 
-顯示名稱已改為 Playback Suite，但儲存庫名稱、`speed-pro.user.js` 檔名、`@namespace`、`@downloadURL` 與 `@updateURL` 保持不變。部分管理器可能因改名建立新副本，**不能假設會自動取代舊腳本**；若出現兩份，先停用舊副本，避免重複控制。
+顯示名稱已改為 Playback Suite，但儲存庫名稱、`speed-pro.user.js` 檔名與 `@namespace` 保持不變；GitHub 版本的 `@downloadURL` 與 `@updateURL` 也維持原 Raw 網址。部分管理器可能因改名建立新副本，**不能假設會自動取代舊腳本**；若出現兩份，先停用舊副本，避免重複控制。
 
-既有設定鍵保留，不做破壞性遷移。更新來源指向 main，更新檢查依管理器設定；目前沒有獨立的穩定發行通道。
+既有設定鍵保留，不做破壞性遷移。GitHub 安裝的更新來源指向 main；Greasy Fork 安裝保留 Greasy Fork 更新管道，不導向 GitHub Raw。更新檢查依管理器設定，目前沒有獨立的穩定發行通道。
 
 ## 使用方式
 
