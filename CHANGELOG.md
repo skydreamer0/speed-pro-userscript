@@ -1,3 +1,9 @@
+## 2.0.2 — GitHub 續播修正候選版
+
+- 修正異常未來時間戳會阻擋新的 YouTube 續播進度；保護合法的較新紀錄。
+- 新增兩組續播回歸測試。保留腳本名稱、命名空間、權限、儲存鍵及 GitHub Raw 更新網址。
+- Greasy Fork 保留獨立的 2.0.1 候選版。本次沒有建立 GitHub Release，未完成真站或 Tampermonkey 安裝、升級驗收。
+
 ## 2.0.1 — 對齊 GitHub 與 Greasy Fork 候選版（2026-11-05）
 
 - 將 GitHub 腳本 `@version` 與 `package.json` 統一為 2.0.1，與 [Greasy Fork 已發布候選版](https://greasyfork.org/en/scripts/603328-playback-suite-cross-platform-video-companion) 一致；同步安裝與版本說明。

@@ -13,6 +13,11 @@ for (const [, key, value] of block.matchAll(/^\/\/\s+@(\S+)\s+(.+)$/gm)) {
 }
 const values = key => metadata.get(key) ?? [];
 assert.deepEqual(values('version'), [pkg.version]);
+assert.deepEqual(values('namespace'), ['george.youtube.speedpro']);
+const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+const changelog = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+assert(readme.includes(`GitHub main 為 ${pkg.version} 候選版`), 'README must identify the current GitHub candidate');
+assert(changelog.startsWith(`## ${pkg.version} —`), 'Changelog must start with the current GitHub candidate');
 assert.deepEqual(values('name'), ['Playback Suite - Cross-platform Video Companion']);
 assert.equal(pkg.name, 'playback-suite-userscript');
 assert.deepEqual(values('license'), ['MIT']);

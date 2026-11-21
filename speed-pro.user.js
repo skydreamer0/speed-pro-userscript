@@ -2,7 +2,7 @@
 // @name         Playback Suite - Cross-platform Video Companion
 // @name:zh-TW   Playback Suite｜跨站影片播放助手
 // @namespace    george.youtube.speedpro
-// @version      2.0.1
+// @version      2.0.2
 // @updateURL    https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @downloadURL  https://raw.githubusercontent.com/skydreamer0/speed-pro-userscript/main/speed-pro.user.js
 // @license      MIT
@@ -209,6 +209,7 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
 
     // Opt-in YouTube checkpoints; intentionally no copied YouTube Helper API or extra GM grants.
     // Same-origin localStorage is visible to site JavaScript. See the integration SPEC.
+    const RESUME_FUTURE_TOLERANCE_MS = 60000;
     const ResumeManager = {
         prefix: APP + ':resume:v1:',
         active: null,
@@ -250,7 +251,7 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
             if (!value || !Number.isFinite(value.time) || !Number.isFinite(value.duration) ||
                 !Number.isFinite(value.savedAt) || typeof value.completed !== 'boolean' ||
                 value.duration < 10 || value.time < 5 || value.time > value.duration + 1 ||
-                now - value.savedAt > 90 * 86400000 || value.savedAt > now + 60000) return null;
+                now - value.savedAt > 90 * 86400000 || value.savedAt > now + RESUME_FUTURE_TOLERANCE_MS) return null;
             return value;
         },
         context() {
@@ -284,7 +285,11 @@ The pre-import provenance of author-supplied Speed Pro 1.1.0 remains unverified.
         write(key, value) {
             try {
                 const previous = this.read(key);
-                if (previous && Number(previous.savedAt) > value.savedAt) return false;
+                // Match the future timestamp guard used by progress(): an invalid
+                // checkpoint must not block a new recording after a clock correction.
+                if (Number.isFinite(previous?.savedAt) &&
+                    previous.savedAt <= Date.now() + RESUME_FUTURE_TOLERANCE_MS &&
+                    previous.savedAt > value.savedAt) return false;
                 localStorage.setItem(key, JSON.stringify(value));
                 ResumeThumbnails.schedule();
                 return true;

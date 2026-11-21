@@ -23,6 +23,8 @@ try{
   window.GM_xmlhttpRequest=()=>{throw new Error('Unexpected network request');};
  },{key});
  await a.addScriptTag({content:source});
+ // Give the synthetic video its metadata event after startup invalidates the first binding.
+ await a.evaluate(()=>document.getElementById('main').dispatchEvent(new Event('loadedmetadata')));
  await b.goto('https://www.youtube.com/');await b.addScriptTag({content:source});
  const bar=b.locator('.yt-speed-pro-resume-progress');
  await bar.waitFor();assert.equal(await bar.getAttribute('aria-label'),'Playback Suite 續播進度 33%');
