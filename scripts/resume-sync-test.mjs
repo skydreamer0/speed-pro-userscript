@@ -60,6 +60,19 @@ test('invalid, expired and future records do not produce progress; completed rec
  }
  f.store.set(key,JSON.stringify(record(115,{completed:true})));f.thumbnails.render();assert.equal(a.children[0].attrs['aria-label'],'Playback Suite 已看完');
 });
+test('visible playback replaces an invalid future-dated checkpoint',()=>{
+ const f=fixture(),a=f.anchor('https://www.youtube.com/watch?v=abcdefghijk'),key=f.resume.keyFor('abcdefghijk');
+ f.remote(key,record(90,{savedAt:Date.now()+86400000}));f.flush();assert.equal(a.children.length,0);
+ f.video.currentTime=40;f.resume.save(f.video);f.flush();
+ assert.equal(f.resume.read(key).time,40);
+ assert.equal(a.children[0].attrs['aria-label'],'Playback Suite 續播進度 33%');
+});
+test('write still preserves a legitimate but newer checkpoint',()=>{
+ const f=fixture(),key=f.resume.keyFor('abcdefghijk'),base=Date.now();
+ f.store.set(key,JSON.stringify(record(70,{savedAt:base+1000})));
+ assert.equal(f.resume.write(key,record(40,{savedAt:base})),false);
+ assert.equal(f.resume.read(key).time,70);
+});
 test('remote progress refreshes thumbnails but never seeks the current player',()=>{
  const f=fixture(),a=f.anchor('https://www.youtube.com/watch?v=abcdefghijk'),key=f.resume.keyFor('abcdefghijk');
  f.video.currentTime=20;f.remote(key,record(70));f.flush();
