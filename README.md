@@ -6,7 +6,7 @@ Playback Suite（原 Speed Pro）是一支單檔 Userscript，提供倍速、快
 
 [安裝](#安裝) · [使用方式](#使用方式) · [支援範圍](#支援範圍) · [常見問題](#常見問題) · [回報問題](https://github.com/skydreamer0/speed-pro-userscript/issues)
 
-> **目前為 2.0.1 候選版。** GitHub main 與 [Greasy Fork](https://greasyfork.org/en/scripts/603328-playback-suite-cross-platform-video-companion) 使用相同版本與程式本體，各自保留原更新管道。尚未完成真實網站、Tampermonkey 安裝及升級驗收，也尚未建立 GitHub Release；發布候選版不代表已驗收的穩定版。
+> **GitHub main 為 2.0.2 候選版；[Greasy Fork](https://greasyfork.org/en/scripts/603328-playback-suite-cross-platform-video-companion) 維持 2.0.1。** 這次續播修正只在 GitHub 候選版。兩者各自保留原更新管道，不會跨管道自動升級。尚未完成真實網站、Tampermonkey 安裝及升級驗收，也未建立 2.0.2 GitHub Release。
 
 ## 功能
 
@@ -113,7 +113,7 @@ npm run test:resume-negative
 node scripts/repair-negative-test.mjs
 ```
 
-`npm test` 執行語法、metadata／文件檢查及 52 組 production-function 合成 fixture（原 30 組加續播同步 22 組）；另外兩個指令分別檢查 7 個續播負控與 5 個既有防護負控。這些不等於瀏覽器、真站或管理器驗收。完整狀態見[測試說明](docs/TESTING.md)與[相容性紀錄](docs/COMPATIBILITY_20261102.md)。
+`npm test` 執行語法、metadata／文件檢查及 54 組 production-function 合成 fixture（30 組一般測試、24 組續播同步測試）；另外兩個指令分別檢查 7 個續播負控與 5 個既有防護負控。這些不等於瀏覽器、真站或管理器驗收。完整狀態見[測試說明](docs/TESTING.md)與[相容性紀錄](docs/COMPATIBILITY_20261102.md)。
 
 [貢獻指南](CONTRIBUTING.md) · [變更紀錄](CHANGELOG.md) · [產品方向](docs/PRODUCT_DIRECTION.md) · [整合規格](docs/PLAYBACK_SUITE_2.0_SPEC.md)
 
